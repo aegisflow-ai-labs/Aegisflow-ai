@@ -72,3 +72,15 @@ failure responses were exercised. pip-audit reported no known vulnerabilities;
 Gitleaks working-tree scan and git diff checks passed. These are scoped test results,
 not production security or performance guarantees. The local test server is stopped
 after verification. Current remote CI status is available on the PostgreSQL PR.
+
+## PostgreSQL tenant RLS slice — 2026-11-01
+
+Local PostgreSQL 18.4 full suite: **48 tests passed**, no skips; lint, format and
+strict typing passed. New acceptance cases include unfiltered case/audit SQL under
+a non-owner runtime role, missing context, wrong-tenant inserts, two-tenant same-key
+requests, context clearing on commit/rollback of a reused connection, v1 data and
+fingerprint preservation, atomic migration-error rollback, and rejection of unsafe
+HTTP runtime roles or disabled RLS. Tests deliberately distinguish administrative
+connections (which bypass RLS) from restricted runtime connections.
+No dependency was added. This is a scoped application/DB boundary test, not an OIDC
+implementation, arbitrary-SQL credential isolation, or production security guarantee.

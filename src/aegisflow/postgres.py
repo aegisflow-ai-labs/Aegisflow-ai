@@ -1,7 +1,8 @@
 """PostgreSQL adapter and explicit, transactionally versioned initial migration."""
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -32,7 +33,32 @@ INSERT INTO aegis_schema_version VALUES (1);
 """
 
 
+RLS_MIGRATION = """
+ALTER TABLE aegis_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE aegis_cases FORCE ROW LEVEL SECURITY;
+CREATE POLICY aegis_case_tenant ON aegis_cases
+USING (tenant_id = current_setting('aegis.tenant_id', true))
+WITH CHECK (tenant_id = current_setting('aegis.tenant_id', true));
+ALTER TABLE aegis_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE aegis_events FORCE ROW LEVEL SECURITY;
+CREATE POLICY aegis_event_tenant ON aegis_events
+USING (tenant_id = current_setting('aegis.tenant_id', true))
+WITH CHECK (tenant_id = current_setting('aegis.tenant_id', true));
+UPDATE aegis_schema_version SET version=2 WHERE version=1;
+"""
+
+
+@contextmanager
+def tenant_transaction(dsn: str, scope: Scope) -> Iterator[psycopg.Connection[tuple[object, ...]]]:
+    """Tenant is supplied by trusted authentication, never by source or request fields."""
+    with connect(dsn) as db:
+        db.execute("SELECT set_config('aegis.tenant_id', %s, true)", (scope.tenant_id,))
+        yield db
+
+
 def connect(dsn: str) -> psycopg.Connection[tuple[object, ...]]:
+    if not dsn.strip():
+        raise ValueError("Explicit PostgreSQL connection required")
     return psycopg.connect(
         dsn, connect_timeout=5, options="-c statement_timeout=5000 -c lock_timeout=5000"
     )
@@ -44,11 +70,13 @@ def migrate(dsn: str) -> None:
         db.execute("SELECT pg_advisory_xact_lock(62468101)")
         db.execute("CREATE TABLE IF NOT EXISTS aegis_schema_version (version INTEGER PRIMARY KEY)")
         rows = db.execute("SELECT version FROM aegis_schema_version").fetchall()
+        if not rows:
+            db.execute(MIGRATION)
+            rows = [(1,)]
         if rows == [(1,)]:
-            return
-        if rows:
+            db.execute(RLS_MIGRATION)
+        elif rows != [(2,)]:
             raise ValueError("Unsupported schema version")
-        db.execute(MIGRATION)
 
 
 class PostgresStore:
@@ -56,8 +84,28 @@ class PostgresStore:
         self.dsn = dsn
         self.clock = clock or (lambda: datetime.now(UTC))
         with connect(dsn) as db:
-            if db.execute("SELECT version FROM aegis_schema_version").fetchall() != [(1,)]:
+            if db.execute("SELECT version FROM aegis_schema_version").fetchall() != [(2,)]:
                 raise ValueError("Unsupported schema version; run migration explicitly")
+
+    def verify_runtime_role(self) -> None:
+        """HTTP serving must not use a role capable of bypassing tenant policies."""
+        with connect(self.dsn) as db:
+            elevated = db.execute("""
+                SELECT EXISTS (SELECT 1 FROM pg_roles
+                WHERE (rolsuper OR rolbypassrls OR rolcreaterole)
+                AND pg_has_role(current_user, oid, 'MEMBER'))
+            """).fetchone()
+            tables = db.execute("""
+                SELECT relrowsecurity, relforcerowsecurity,
+                       pg_has_role(current_user, relowner, 'MEMBER')
+                FROM pg_class WHERE oid IN ('aegis_cases'::regclass, 'aegis_events'::regclass)
+            """).fetchall()
+            if (
+                elevated != (False,)
+                or len(tables) != 2
+                or any(row != (True, True, False) for row in tables)
+            ):
+                raise ValueError("HTTP runtime requires a non-owner role without RLS bypass")
 
     def run(self, scope: Scope, request: Request, scenario: Scenario) -> Case:
         Store.authorize(scope, request.tenant_id, "investigate")
@@ -77,7 +125,7 @@ class PostgresStore:
         )
         lock_hash = digest([scope.tenant_id, request.idempotency_key])
         lock_id = int.from_bytes(bytes.fromhex(lock_hash[:16]), signed=True)
-        with connect(self.dsn) as db:
+        with tenant_transaction(self.dsn, scope) as db:
             db.execute("SELECT pg_advisory_xact_lock(%s)", (lock_id,))
             existing = db.execute(
                 "SELECT fingerprint, body FROM aegis_cases WHERE tenant_id=%s AND request_key=%s",
@@ -139,7 +187,7 @@ class PostgresStore:
 
     def read(self, scope: Scope, case_id: str) -> Case:
         Store.authorize(scope, scope.tenant_id, "read")
-        with connect(self.dsn) as db:
+        with tenant_transaction(self.dsn, scope) as db:
             row = db.execute(
                 "SELECT body FROM aegis_cases WHERE tenant_id=%s AND case_id=%s",
                 (scope.tenant_id, case_id),
@@ -150,7 +198,7 @@ class PostgresStore:
 
     def events(self, scope: Scope, case_id: str) -> tuple[AuditEvent, ...]:
         self.read(scope, case_id)
-        with connect(self.dsn) as db:
+        with tenant_transaction(self.dsn, scope) as db:
             rows = db.execute(
                 "SELECT body FROM aegis_events WHERE tenant_id=%s AND case_id=%s ORDER BY revision",
                 (scope.tenant_id, case_id),
