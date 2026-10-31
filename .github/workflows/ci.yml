@@ -1,0 +1,36 @@
+name: baseline
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install uv==0.13.4
+      - run: sh tools/check.sh
+      - name: Dependency audit and SBOM
+        run: .venv/bin/pip-audit --skip-editable --format cyclonedx-json --output sbom.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: sbom-python-${{ matrix.python }}
+          path: sbom.json
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25'
+          cache: false
+      - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact --no-banner
+      - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir . --redact --no-banner

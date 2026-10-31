@@ -1,0 +1,20 @@
+{
+  "dataset_version": "supply-delay-v1",
+  "generator_version": "1",
+  "seed": 42,
+  "generator_commit": null,
+  "license": "synthetic project data; redistribution license not selected",
+  "source_uri": "synthetic://supply-delay-v1",
+  "captured_at": "2026-11-01T09:00:00Z",
+  "checksum": "419ed49267bb7dde0d7df9c5d385a246f56b0cbe25bcf618ef95ea8b990a717e",
+  "checksum_encoding": "canonical sorted compact UTF-8 JSON",
+  "split_id": "development",
+  "access_class": "synthetic",
+  "gold": {
+    "delay_seconds": 25200,
+    "sla_breach": true,
+    "as_of": "2026-11-01T18:00:00Z"
+  },
+  "generator_commit_resolution": "git log -1 --format=%H -- src/aegisflow/scenario.py at this checkout",
+  "generator_sha256": "6eeec56fc497dd27ac4717b1127f49993a57a5c71e953006e51071770e85b1cf"
+}

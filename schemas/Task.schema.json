@@ -1,0 +1,77 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "task_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "role_id": {
+      "const": "A21",
+      "title": "Role Id",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "COMPLETED",
+        "NEEDS_EVIDENCE"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "policy_version": {
+      "const": "elapsed-seconds-v1",
+      "default": "elapsed-seconds-v1",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "allowed_tools": {
+      "default": [
+        "read_synthetic_snapshot"
+      ],
+      "items": {
+        "const": "read_synthetic_snapshot",
+        "type": "string"
+      },
+      "title": "Allowed Tools",
+      "type": "array"
+    },
+    "max_source_bytes": {
+      "const": 1000000,
+      "default": 1000000,
+      "title": "Max Source Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "task_id",
+    "case_id",
+    "tenant_id",
+    "role_id",
+    "status"
+  ],
+  "title": "Task",
+  "type": "object"
+}

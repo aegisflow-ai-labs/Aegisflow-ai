@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "dataset_version": "supply-delay-v1",
+  "seed": 42,
+  "generator_version": "1",
+  "source_uri": "synthetic://supply-delay-v1",
+  "access_class": "synthetic",
+  "order": {
+    "schema_version": 1,
+    "order_id": "PO-001",
+    "tenant_id": "demo",
+    "quantity": 100,
+    "promised_at": "2026-11-01T09:00:00Z",
+    "placed_at": "2026-10-29T09:00:00Z"
+  },
+  "deliveries": [
+    {
+      "schema_version": 1,
+      "event_id": "delivery-001",
+      "order_id": "PO-001",
+      "delivered_at": "2026-11-01T16:00:00Z"
+    }
+  ],
+  "inventory": {
+    "schema_version": 1,
+    "available": 20,
+    "captured_at": "2026-11-01T09:00:00Z"
+  },
+  "sla": {
+    "schema_version": 1,
+    "grace_seconds": 3600,
+    "version": "sla-v1"
+  },
+  "procedure": {
+    "schema_version": 1,
+    "version": "sop-v1",
+    "instruction": "Escalate to procurement after SLA breach"
+  }
+}

@@ -1,0 +1,263 @@
+{
+  "$defs": {
+    "Delivery": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "event_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "order_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "delivered_at": {
+          "format": "date-time",
+          "title": "Delivered At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "order_id",
+        "delivered_at"
+      ],
+      "title": "Delivery",
+      "type": "object"
+    },
+    "Inventory": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "available": {
+          "minimum": 0,
+          "title": "Available",
+          "type": "integer"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "available",
+        "captured_at"
+      ],
+      "title": "Inventory",
+      "type": "object"
+    },
+    "Order": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "order_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "promised_at": {
+          "format": "date-time",
+          "title": "Promised At",
+          "type": "string"
+        },
+        "placed_at": {
+          "format": "date-time",
+          "title": "Placed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "order_id",
+        "tenant_id",
+        "quantity",
+        "promised_at",
+        "placed_at"
+      ],
+      "title": "Order",
+      "type": "object"
+    },
+    "Procedure": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Version",
+          "type": "string"
+        },
+        "instruction": {
+          "const": "Escalate to procurement after SLA breach",
+          "title": "Instruction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "instruction"
+      ],
+      "title": "Procedure",
+      "type": "object"
+    },
+    "SLA": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "grace_seconds": {
+          "maximum": 604800,
+          "minimum": 0,
+          "title": "Grace Seconds",
+          "type": "integer"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "grace_seconds",
+        "version"
+      ],
+      "title": "SLA",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "dataset_version": {
+      "const": "supply-delay-v1",
+      "default": "supply-delay-v1",
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "generator_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Generator Version",
+      "type": "string"
+    },
+    "source_uri": {
+      "const": "synthetic://supply-delay-v1",
+      "default": "synthetic://supply-delay-v1",
+      "title": "Source Uri",
+      "type": "string"
+    },
+    "access_class": {
+      "const": "synthetic",
+      "default": "synthetic",
+      "title": "Access Class",
+      "type": "string"
+    },
+    "order": {
+      "$ref": "#/$defs/Order"
+    },
+    "deliveries": {
+      "items": {
+        "$ref": "#/$defs/Delivery"
+      },
+      "title": "Deliveries",
+      "type": "array"
+    },
+    "inventory": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Inventory"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sla": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SLA"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "procedure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Procedure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "seed",
+    "order",
+    "deliveries",
+    "inventory",
+    "sla",
+    "procedure"
+  ],
+  "title": "Scenario",
+  "type": "object"
+}
