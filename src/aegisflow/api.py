@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Annotated
 
+import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
@@ -15,6 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime
 
 from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
+from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
 
 
@@ -28,7 +30,7 @@ def token_digest(token: str) -> str:
 
 
 def create_app(
-    store: Store, credentials: dict[str, Scope], sources: tuple[Scenario, ...]
+    store: Store | PostgresStore, credentials: dict[str, Scope], sources: tuple[Scenario, ...]
 ) -> FastAPI:
     """Only server configuration may assign scopes and source snapshots."""
     if not credentials or any(
@@ -70,6 +72,7 @@ def create_app(
     async def conflict(_: HTTPRequest, __: IdempotencyConflict) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": "IDEMPOTENCY_CONFLICT"})
 
+    @app.exception_handler(psycopg.Error)
     @app.exception_handler(sqlite3.Error)
     async def unavailable(_: HTTPRequest, __: sqlite3.Error) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
@@ -123,4 +126,8 @@ def from_environment() -> FastAPI:
     if source_path.stat().st_size > 1_000_000:
         raise ValueError("Kaynak boyutu sınırı aşıldı")
     source = Scenario.model_validate_json(source_path.read_text())
-    return create_app(Store(Path(os.environ["AEGISFLOW_DB"])), credentials, (source,))
+    if "AEGISFLOW_DATABASE_URL" in os.environ:
+        store: Store | PostgresStore = PostgresStore(os.environ["AEGISFLOW_DATABASE_URL"])
+    else:
+        store = Store(Path(os.environ["AEGISFLOW_DB"]))
+    return create_app(store, credentials, (source,))

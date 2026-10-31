@@ -73,7 +73,7 @@ Audit, erişim ve hesaplama altyapısının varlığı diğer rollerin tamamland
 ## Sınırlar ve planlanan özellikler
 
 Bu bir yerel geliştirme aracıdır. Scope güvenilir çağıran bağlamıdır, kimlik doğrulama
-sistemi değildir. OIDC, üretim tenant izolasyonu, PostgreSQL/RLS, gerçek
+sistemi değildir. OIDC, üretim tenant izolasyonu, RLS, gerçek
 SQL/belge adaptörleri, UI, iş günü takvimi, kısmi sevkiyat, kök neden çıkarımı ve
 alternatif maliyet/risk kıyası henüz uygulanmadı.
 
@@ -87,7 +87,7 @@ SQLite dosya sahibi audit geçmişini değiştirebilir; üretim audit mühürlem
 idempotency'si, işlem sonrası doğrulama ve telafi ileride uygulanacak. Bunlar olmadan
 dış sistemde yazma işlemi eklenmemelidir.
 
-Sonraki dilim: PostgreSQL migration ve gerçek DB entegrasyon testleri;
+Sonraki dilim: OIDC ve kaynak/tenant erişim sınırlarının güçlendirilmesi;
 ardından sınırlı agentic yönlendirme ve B0 karşılaştırması. 300 vakalık benchmark,
 B1–B4 sonuçları, 36 tam rol ve PDF'nin 20 sprintlik yol haritası planlıdır.
 
@@ -108,7 +108,7 @@ Depoda lisans seçilmemiştir; açık kaynak lisansı varsaymayın.
 ## Sentetik HTTP API (ikinci dilim)
 
 Sunucu taraflı geliştirme anahtarıyla kimlik/kapsam doğrulanır. Bu OIDC değildir;
-yalnız localhost ve sentetik veri içindir. PostgreSQL henüz eklenmedi.
+yalnız localhost ve sentetik veri içindir. PostgreSQL adaptörü aşağıdaki ayrı kurulumla kullanılabilir.
 
 ```sh
 uv sync --frozen --no-editable --reinstall-package aegisflow-ai
@@ -134,3 +134,39 @@ GET `/v1/cases/{case_id}`, `/v1/cases/{case_id}/events` ve
 Tenant veya izin istemciden seçilemez. Başka tenant kaydı ve olmayan kayıt aynı
 404 yanıtını verir; izinsiz işlem 403, kimliksiz istek 401, bozuk şema 422,
 anahtar çakışması 409, DB hatası 503 döndürür. Ayrıntılar [ADR-002](docs/adr/002-authenticated-synthetic-api.md).
+
+## PostgreSQL persistence
+
+PostgreSQL 18 is supported for this synthetic pilot. SQLite remains available for
+the local CLI. Configure credentials outside the repository. First set
+`AEGISFLOW_DATABASE_URL` to a **schema-owner** connection and run:
+
+```sh
+uv sync --frozen --no-editable --reinstall-package aegisflow-ai
+.venv/bin/python -m aegisflow.postgres
+```
+
+The command applies migration 1 transactionally; repeating it is safe. Startup
+never migrates implicitly. Configure a separate runtime role using your database
+administrator account (replace `aegisflow_runtime` with your provisioned role):
+
+```sql
+GRANT USAGE ON SCHEMA public TO aegisflow_runtime;
+GRANT SELECT ON aegis_schema_version TO aegisflow_runtime;
+GRANT SELECT, INSERT ON aegis_cases, aegis_events TO aegisflow_runtime;
+```
+
+Switch `AEGISFLOW_DATABASE_URL` to the **non-owner runtime** connection, retain the
+API auth/source configuration described above, then start the same Uvicorn factory.
+When this variable is set, PostgreSQL failure never falls back to SQLite.
+Tenant checks are application controls; PostgreSQL RLS is **not implemented**.
+Use only synthetic data and localhost. See [ADR-003](docs/adr/003-postgresql-persistence.md).
+
+For the full test suite, set `AEGISFLOW_TEST_DATABASE_URL` to an administrative
+connection on a **disposable** PostgreSQL instance, then run `sh tools/check.sh`.
+Tests create/drop isolated databases and temporary runtime roles. Without this
+variable, nine PostgreSQL tests explicitly skip; that is not a validated database
+integration run. CI provides PostgreSQL 18 and runs the complete suite.
+
+PR titles, descriptions, and review/approval text use English; see
+[Contributing](CONTRIBUTING.md). Historical Turkish design references are retained.

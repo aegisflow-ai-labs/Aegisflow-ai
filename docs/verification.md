@@ -58,3 +58,17 @@ Testler kurulu Starlette'ın desteklediği httpx2 istemcisiyle uyarısız geçti
 Son bağımlılık kümesinde pip-audit exit 0, bilinen açık yok; SBOM work/api-sbom.json.
 PostgreSQL, OIDC ve gerçek ağ sunucusuyla yük testi bu dilimde yapılmadı.
 Uzak son commit sonuçları PR #1'in güncel kontrollerinden okunmalıdır.
+
+## PostgreSQL persistence slice — 2026-11-01
+
+Local PostgreSQL 18.4 ran on a private Unix socket with TCP disabled. Tests created
+and dropped isolated databases and a temporary non-owner runtime role. Full
+`tools/check.sh` with AEGISFLOW_TEST_DATABASE_URL completed: **40 passed**, Ruff
+lint/format and strict mypy (8 source files) passed. No PostgreSQL test was skipped.
+Migration/reopen/version rejection, four concurrent identical requests, conflicting
+fingerprints, cross-tenant access/FKs, rollback on audit failure, UPDATE/DELETE/
+TRUNCATE rejection, restricted runtime grants, HTTP evidence reads and database
+failure responses were exercised. pip-audit reported no known vulnerabilities;
+Gitleaks working-tree scan and git diff checks passed. These are scoped test results,
+not production security or performance guarantees. The local test server is stopped
+after verification. Current remote CI status is available on the PostgreSQL PR.
