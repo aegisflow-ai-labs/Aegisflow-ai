@@ -54,7 +54,7 @@ def test_migration_and_reopen(dsn):
     assert PostgresStore(dsn).read(SCOPE, case.case_id) == case
     assert len(store.events(SCOPE, case.case_id)) == 3
     with connect(dsn) as db:
-        db.execute("UPDATE aegis_schema_version SET version=2")
+        db.execute("UPDATE aegis_schema_version SET version=3")
     with pytest.raises(ValueError):
         migrate(dsn)
     with pytest.raises(ValueError):
@@ -115,12 +115,12 @@ def test_audit_mutation_rejected(dsn, command):
     assert len(store.events(SCOPE, case.case_id)) == 3
 
 
-def test_api_postgres_evidence_and_dependency_failure(dsn):
+def test_api_postgres_evidence_and_dependency_failure(dsn, runtime_dsn):
     import secrets
 
     token = secrets.token_urlsafe(32)
     migrate(dsn)
-    app = create_app(PostgresStore(dsn), {token_digest(token): SCOPE}, (generate(),))
+    app = create_app(PostgresStore(runtime_dsn), {token_digest(token): SCOPE}, (generate(),))
     headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "http-pg"}
     with TestClient(app) as client:
         body = {"order_id": "PO-001", "as_of": "2026-11-01T18:00:00Z"}
@@ -136,7 +136,8 @@ def test_api_postgres_evidence_and_dependency_failure(dsn):
         assert failure.status_code == 503 and dsn not in failure.text
 
 
-def test_runtime_role_cannot_migrate_or_mutate_audit(dsn):
+@pytest.fixture
+def runtime_dsn(dsn):
     import secrets
 
     migrate(dsn)
@@ -159,17 +160,153 @@ def test_runtime_role_cannot_migrate_or_mutate_audit(dsn):
         )
     runtime_dsn = make_conninfo(dsn, user=role, password=password)
     try:
-        store = PostgresStore(runtime_dsn)
-        case = store.run(SCOPE, REQUEST, generate())
-        assert store.read(SCOPE, case.case_id) == case
-        assert len(store.events(SCOPE, case.case_id)) == 3
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            migrate(runtime_dsn)
-        with connect(runtime_dsn) as db, pytest.raises(psycopg.errors.InsufficientPrivilege):
-            db.execute("DELETE FROM aegis_events")
-        with connect(runtime_dsn) as db, pytest.raises(psycopg.errors.InsufficientPrivilege):
-            db.execute("CREATE TABLE unauthorized (id int)")
+        yield runtime_dsn
     finally:
         with connect(dsn) as db:
             db.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
             db.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
+
+
+def test_runtime_role_cannot_migrate_or_mutate_audit(runtime_dsn):
+    store = PostgresStore(runtime_dsn)
+    store.verify_runtime_role()
+    case = store.run(SCOPE, REQUEST, generate())
+    assert store.read(SCOPE, case.case_id) == case
+    assert len(store.events(SCOPE, case.case_id)) == 3
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        migrate(runtime_dsn)
+    with connect(runtime_dsn) as db, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        db.execute("DELETE FROM aegis_events")
+    with connect(runtime_dsn) as db, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        db.execute("CREATE TABLE unauthorized (id int)")
+
+
+def test_rls_filters_unscoped_queries_and_rejects_cross_tenant_writes(runtime_dsn):
+    from aegisflow.contracts import Scenario
+    from aegisflow.postgres import tenant_transaction
+
+    store = PostgresStore(runtime_dsn)
+    own = store.run(SCOPE, REQUEST, generate())
+    other = Scope(tenant_id="other", subject_id="other", permissions={"read", "investigate"})
+    source = generate().model_dump(mode="json")
+    source["order"]["tenant_id"] = "other"
+    other_request = Request.model_validate({**REQUEST.model_dump(), "tenant_id": "other"})
+    foreign = store.run(other, other_request, Scenario.model_validate(source))
+    assert own.case_id != foreign.case_id  # Same idempotency key is independent per tenant.
+    with connect(runtime_dsn) as db:
+        assert db.execute("SELECT case_id FROM aegis_cases").fetchall() == []
+        assert db.execute("SELECT event_id FROM aegis_events").fetchall() == []
+    with tenant_transaction(runtime_dsn, SCOPE) as db:
+        assert db.execute("SELECT case_id FROM aegis_cases").fetchall() == [(own.case_id,)]
+        assert db.execute("SELECT count(*) FROM aegis_events").fetchone()[0] == 3
+        assert (
+            db.execute(
+                "SELECT body FROM aegis_cases WHERE case_id=%s", (foreign.case_id,)
+            ).fetchall()
+            == []
+        )
+    with (
+        tenant_transaction(runtime_dsn, SCOPE) as db,
+        pytest.raises(psycopg.errors.InsufficientPrivilege),
+    ):
+        db.execute(
+            "INSERT INTO aegis_cases VALUES (%s,'other','forged','hash','{}')", (str(uuid4()),)
+        )
+    with (
+        tenant_transaction(runtime_dsn, SCOPE) as db,
+        pytest.raises(psycopg.errors.InsufficientPrivilege),
+    ):
+        db.execute(
+            "INSERT INTO aegis_events VALUES (%s,'other',%s,99,'{}')",
+            (str(uuid4()), foreign.case_id),
+        )
+    with connect(runtime_dsn) as db, pytest.raises(psycopg.errors.InsufficientPrivilege):
+        db.execute(
+            "INSERT INTO aegis_cases VALUES (%s,'demo','missing-context','hash','{}')",
+            (str(uuid4()),),
+        )
+
+
+@pytest.mark.parametrize("rollback", [False, True])
+def test_tenant_context_clears_on_reused_connection(runtime_dsn, rollback):
+    store = PostgresStore(runtime_dsn)
+    store.run(SCOPE, REQUEST, generate())
+    with connect(runtime_dsn) as db:
+        db.execute("SELECT set_config('aegis.tenant_id','demo',true)")
+        assert db.execute("SELECT count(*) FROM aegis_cases").fetchone()[0] == 1
+        if rollback:
+            db.rollback()
+        else:
+            db.commit()
+        assert db.execute("SELECT count(*) FROM aegis_cases").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM aegis_events").fetchone()[0] == 0
+
+
+def test_http_rejects_privileged_or_rls_disabled_runtime(dsn, runtime_dsn):
+    import secrets
+
+    creds = {token_digest(secrets.token_urlsafe(32)): SCOPE}
+    with pytest.raises(ValueError):
+        create_app(PostgresStore(dsn), creds, (generate(),))
+    with connect(dsn) as db:
+        db.execute("ALTER TABLE aegis_cases DISABLE ROW LEVEL SECURITY")
+    with pytest.raises(ValueError):
+        create_app(PostgresStore(runtime_dsn), creds, (generate(),))
+
+
+def test_http_rejects_bypassrls_role(dsn, runtime_dsn):
+    with connect(runtime_dsn) as db:
+        role = db.execute("SELECT current_user").fetchone()[0]
+    with connect(dsn) as db:
+        db.execute(sql.SQL("ALTER ROLE {} BYPASSRLS").format(sql.Identifier(role)))
+    with pytest.raises(ValueError):
+        PostgresStore(runtime_dsn).verify_runtime_role()
+
+
+def test_v1_migration_preserves_existing_rows(dsn):
+    from aegisflow.engine import investigate
+    from aegisflow.postgres import MIGRATION
+
+    old = investigate(REQUEST, generate(), str(uuid4()), SCOPE.subject_id, REQUEST.as_of)
+    with connect(dsn) as db:
+        db.execute("CREATE TABLE aegis_schema_version (version INTEGER PRIMARY KEY)")
+        db.execute(MIGRATION)
+        db.execute(
+            "INSERT INTO aegis_cases VALUES (%s,%s,%s,'old-fingerprint',%s)",
+            (old.case_id, old.tenant_id, REQUEST.idempotency_key, old.model_dump_json()),
+        )
+    migrate(dsn)
+    migrate(dsn)
+    assert PostgresStore(dsn).read(SCOPE, old.case_id) == old
+    with connect(dsn) as db:
+        assert db.execute("SELECT version FROM aegis_schema_version").fetchall() == [(2,)]
+        assert db.execute("SELECT fingerprint FROM aegis_cases").fetchall() == [
+            ("old-fingerprint",)
+        ]
+
+
+def test_failed_rls_migration_rolls_back_policies_and_version(dsn):
+    from aegisflow.postgres import MIGRATION
+
+    with connect(dsn) as db:
+        db.execute("CREATE TABLE aegis_schema_version (version INTEGER PRIMARY KEY)")
+        db.execute(MIGRATION)
+        db.execute("CREATE POLICY aegis_event_tenant ON aegis_events USING (false)")
+    with pytest.raises(psycopg.errors.DuplicateObject):
+        migrate(dsn)
+    with connect(dsn) as db:
+        assert db.execute("SELECT version FROM aegis_schema_version").fetchall() == [(1,)]
+        assert db.execute(
+            "SELECT relrowsecurity FROM pg_class WHERE oid='aegis_cases'::regclass"
+        ).fetchone() == (False,)
+        assert (
+            db.execute(
+                "SELECT count(*) FROM pg_policies WHERE policyname='aegis_case_tenant'"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_blank_postgres_connection_is_rejected():
+    with pytest.raises(ValueError):
+        connect("  ")

@@ -146,7 +146,7 @@ uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 .venv/bin/python -m aegisflow.postgres
 ```
 
-The command applies migration 1 transactionally; repeating it is safe. Startup
+The command applies migrations through schema version 2 transactionally; repeating it is safe. Startup
 never migrates implicitly. Configure a separate runtime role using your database
 administrator account (replace `aegisflow_runtime` with your provisioned role):
 
@@ -159,14 +159,30 @@ GRANT SELECT, INSERT ON aegis_cases, aegis_events TO aegisflow_runtime;
 Switch `AEGISFLOW_DATABASE_URL` to the **non-owner runtime** connection, retain the
 API auth/source configuration described above, then start the same Uvicorn factory.
 When this variable is set, PostgreSQL failure never falls back to SQLite.
-Tenant checks are application controls; PostgreSQL RLS is **not implemented**.
+Tenant checks run in the application and PostgreSQL RLS. The HTTP factory rejects
+owner/privileged credentials or disabled RLS. Context comes from trusted server
+authentication; it is not safe against an attacker with arbitrary SQL access.
 Use only synthetic data and localhost. See [ADR-003](docs/adr/003-postgresql-persistence.md).
 
 For the full test suite, set `AEGISFLOW_TEST_DATABASE_URL` to an administrative
 connection on a **disposable** PostgreSQL instance, then run `sh tools/check.sh`.
 Tests create/drop isolated databases and temporary runtime roles. Without this
-variable, nine PostgreSQL tests explicitly skip; that is not a validated database
+variable, PostgreSQL integration tests explicitly skip; that is not a validated database
 integration run. CI provides PostgreSQL 18 and runs the complete suite.
 
 PR titles, descriptions, and review/approval text use English; see
 [Contributing](CONTRIBUTING.md). Historical Turkish design references are retained.
+
+### RLS upgrade (schema version 2)
+
+Stop the previous API before upgrading the synthetic database, take a backup, run
+`.venv/bin/python -m aegisflow.postgres` with the owner connection, and restart the
+new API with the restricted runtime connection. Old adapter code rejects schema 2;
+this is not a zero-downtime deployment. No automatic downgrade is available.
+Migration failure rolls back policy changes and version advancement together.
+
+RLS filters case/audit reads and checks inserts against a transaction-local tenant.
+Missing context fails closed. It protects against missing SQL tenant predicates;
+a compromised server/credential capable of arbitrary SQL can choose another context.
+OIDC, source-level authorization and production acceptance remain planned.
+See [ADR-004](docs/adr/004-transaction-scoped-tenant-rls.md).
