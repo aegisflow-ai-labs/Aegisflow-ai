@@ -18,6 +18,7 @@ from pydantic import AwareDatetime
 
 from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
 from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
+from .http_limits import RequestLimits
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
 
@@ -155,6 +156,7 @@ def create_app(
                 return item
         raise NotFound()
 
+    app.add_middleware(RequestLimits)
     return app
 
 

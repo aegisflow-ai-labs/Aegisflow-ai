@@ -97,3 +97,33 @@ were tested. Clean setup files have mode 0600 and no token is printed. PostgreSQ
 revocation was exercised with restricted runtime credentials and RLS enabled.
 No dependency was added; current dependency audit and secret scan results are
 reported on the new PR. Older validation records above describe their own snapshots.
+
+## English README, Apache-2.0 and HTTP input hardening — 2026-11-01
+
+The project owner delegated license selection; Apache-2.0 was prepared with the
+unchanged official text, project NOTICE, package metadata and synthetic fixture
+manifest. Maintainer review must confirm licensing authority for existing work.
+README was rewritten in English and its repository-relative links were verified.
+
+Full suite with PostgreSQL 18.4: **78 tests passed**, none skipped, in both the working
+venv and a separately created clean environment. Ruff lint/format and strict mypy
+(10 source files) passed. Added input-boundary tests cover actual streamed bytes,
+declared/mismatched/duplicate/invalid lengths, exact limits, zero-padded large length
+headers, body-read deadline, disconnect and lifespan handling, plus actual HTTP API
+rejection before persistence. Repeated demo setup is tested for non-overwriting and
+absence of partial credentials. New credential/header files are mode 0600.
+
+The README CLI/replay and header-file curl examples were run with fresh temporary
+files against a real localhost Uvicorn process and passed. Both temporary servers
+are stopped after checks. A wheel was built and LICENSE/NOTICE bytes, Apache-2.0
+License-Expression and README metadata inclusion were verified. No extra third-party
+package was added: AnyIO was promoted from transitive to explicit dependency without
+changing its locked version.
+
+pip-audit reported no known vulnerabilities; Gitleaks working-tree and commit-history
+scans found no leaks; git diff checks passed. GitHub secret scanning and push
+protection were enabled and read back, private vulnerability reporting read back as
+enabled, and dependency vulnerability alerts returned HTTP 204 (enabled). At that
+snapshot open dependency/secret alerts were empty; newly enabled scans may still be
+processing. Main review/status protection remains enabled. This is scoped validation,
+not an independent comprehensive security audit or a production-security guarantee.

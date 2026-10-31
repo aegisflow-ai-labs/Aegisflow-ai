@@ -13,7 +13,7 @@ from aegisflow.scenario import generate
 Path("work").mkdir(exist_ok=True)
 token = secrets.token_urlsafe(32)
 scope = Scope(tenant_id="demo", subject_id="local-demo", permissions={"read", "investigate"})
-for name, content in (
+outputs = (
     (
         "work/source-acl.json",
         SourcePolicy(
@@ -28,8 +28,14 @@ for name, content in (
         ).model_dump_json(indent=2),
     ),
     ("work/api-token", token),
+    ("work/api-headers", f"Authorization: Bearer {token}\nContent-Type: application/json\n"),
     ("work/api-auth.json", json.dumps({token_digest(token): scope.model_dump(mode="json")})),
-):
+)
+if any(Path(name).exists() for name, _ in outputs):
+    raise SystemExit(
+        "Existing demo files detected; reuse them or choose a fresh working directory."
+    )
+for name, content in outputs:
     with os.fdopen(os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as file:
         file.write(content)
-print("Yerel kimlik dosyaları work/ içinde oluşturuldu; var olan dosyalar üzerine yazılmaz.")
+print("Local demo credentials and source ACL created in work/; existing files are not overwritten.")

@@ -3,7 +3,7 @@
   "generator_version": "1",
   "seed": 42,
   "generator_commit": null,
-  "license": "synthetic project data; redistribution license not selected",
+  "license": "Apache-2.0",
   "source_uri": "synthetic://supply-delay-v1",
   "captured_at": "2026-11-01T09:00:00Z",
   "checksum": "419ed49267bb7dde0d7df9c5d385a246f56b0cbe25bcf618ef95ea8b990a717e",
