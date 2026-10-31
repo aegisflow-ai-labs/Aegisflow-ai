@@ -37,6 +37,8 @@ def create_app(
         len(key) != 64 or any(c not in "0123456789abcdef" for c in key) for key in credentials
     ):
         raise ValueError("Sunucu için SHA-256 kimlik kayıtları gerekli")
+    if isinstance(store, PostgresStore):
+        store.verify_runtime_role()
     principals = dict(credentials)
     snapshots = {(s.order.tenant_id, s.order.order_id): s.model_copy(deep=True) for s in sources}
     if len(snapshots) != len(sources):
