@@ -185,7 +185,7 @@ def test_source_policy_schema_and_clean_demo_setup(tmp_path, monkeypatch):
         [sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True
     )
     work = tmp_path / "work"
-    for name in ("api-auth.json", "api-token", "source-acl.json"):
+    for name in ("api-auth.json", "api-token", "api-headers", "source-acl.json"):
         assert (work / name).stat().st_mode & 0o777 == 0o600
     token = (work / "api-token").read_text()
     assert token not in result.stdout and token not in result.stderr
@@ -207,3 +207,20 @@ def test_source_policy_schema_and_clean_demo_setup(tmp_path, monkeypatch):
     monkeypatch.delenv("AEGISFLOW_SOURCE_ACL_FILE")
     with pytest.raises(KeyError):
         from_environment()
+
+
+def test_demo_setup_does_not_leave_partial_credentials_when_files_exist(tmp_path):
+    import subprocess
+    import sys
+
+    script = Path("tools/setup_demo_api.py").resolve()
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "api-token").write_text("existing-private-canary")
+    result = subprocess.run(
+        [sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert result.returncode != 0
+    assert (work / "api-token").read_text() == "existing-private-canary"
+    assert not (work / "source-acl.json").exists()
+    assert "existing-private-canary" not in result.stdout + result.stderr

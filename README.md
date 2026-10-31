@@ -1,28 +1,40 @@
 # AegisFlow AI
 
-Evidence-driven multi-agent decision support and controlled workflow automation.
+**Evidence-driven operational decision support with deterministic controls and auditable workflows.**
 
-AegisFlow AI, kurumsal operasyon vakalarını kanıtlarla araştırmayı ve insan tarafından
-onaylanmış eylemleri kontrollü yürütmeyi hedefleyen erken aşama bir mühendislik projesidir.
-Teknik PDF hedef tasarımdır; performans değerleri ölçülmüş sonuç değildir.
+[![CI](https://github.com/aegisflow-ai-labs/Aegisflow-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/aegisflow-ai-labs/Aegisflow-ai/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-## Mevcut çalışan dilim
+AegisFlow AI investigates operational cases using traceable evidence and versioned
+business rules. The long-term design introduces selectively activated specialists
+and human-approved actions. Development starts with a reproducible, LLM-free
+supplier-delay baseline, then adds capabilities in small, verified increments.
 
-**Yerel, sentetik, LLM içermeyen B0 başlangıç akışı:** vaka oluşturma → sipariş,
-teslimat, stok, SLA ve prosedür snapshotlarını okuma → UTC gecikme/SLA hesabı →
-kaynağa bağlı iddialar veya açık çekimserlik → atomik SQLite vaka ve audit kaydı.
+**Status:** synthetic, local-development prototype. The technical design PDF is a
+target architecture; its performance values and roadmap are not measured results.
+Code and documentation describe the current checkout; open PRs may contain features
+that have not reached `main` yet.
 
-- Kapalı Pydantic v1 sözleşmeleri ve sürümlenen JSON Schema dosyaları.
-- Seed=42 ile aynı veri; fixture checksum ve golden beklenti.
-- Kaynak sürümü, snapshot ve SHA-256 ile her iddianın kanıt bağlantısı.
-- Aynı anahtarlı aynı istekte aynı vaka; değişen istek/kaynak/kimlikte açık hata.
-- Eşzamanlı tekrarlar, rollback, tenant/işlem kapsamı ve append-only audit testleri.
-- Yerel CLI JSON raporu. Model çağrısı 0; dış iş sisteminde yan etki yok.
+## Implemented capabilities
 
-## Kurulum ve demo
+- Deterministic order/delivery/SLA investigation using seeded synthetic inputs.
+- Evidence-linked claims with source versions, immutable snapshots and SHA-256 checksums.
+- Explicit uncertainty for missing, stale or conflicting evidence.
+- Closed Pydantic contracts, versioned JSON Schemas and persisted input dependencies.
+- Atomic case/audit persistence in SQLite or explicitly configured PostgreSQL.
+- Tenant-aware API access, PostgreSQL RLS and restricted runtime-role checks.
+- Exact tenant/subject/source grants, request-time ACL reload and live revocation.
+- Idempotent request handling, concurrent replay protection and transaction rollback.
+- HTTP input limits before JSON parsing: 64 KiB body, 16 KiB aggregate header
+  names/values, and a five-second total body-read deadline.
 
-Python 3.12+ ve uv 0.13.4 gerekir. Yerel olarak Python 3.14.5 doğrulandı.
-Depoyu klonlayıp köküne geçin:
+The baseline makes **zero model calls** and performs **no external business actions**.
+API case creation writes only to the configured local case database.
+
+## Quick start: deterministic CLI
+
+Requirements: Python 3.12+ and uv 0.13.4. CI covers Python 3.12 and 3.14;
+local verification uses Python 3.14.5. PostgreSQL is optional for this CLI.
 
 ```sh
 git clone https://github.com/aegisflow-ai-labs/Aegisflow-ai.git
@@ -30,127 +42,98 @@ cd Aegisflow-ai
 uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 mkdir -p work
 .venv/bin/python -m aegisflow generate --seed 42 > work/scenario.json
-.venv/bin/python -m aegisflow run --scenario work/scenario.json --db work/demo.db --key demo-001 --as-of 2026-11-01T18:00:00Z
+.venv/bin/python -m aegisflow run \
+  --scenario work/scenario.json --db work/demo.db \
+  --key demo-001 --as-of 2026-11-01T18:00:00Z
 ```
 
-Beklenen: `COMPLETED`, `DELIVERY_DELAY=25200`, `SLA_BREACH=true`, üç audit olayı,
-`active_roles=["A21"]`. Aynı son komutu tekrar çalıştırmak aynı vaka/olayları döndürür.
-Aynı anahtarla farklı `--as-of` veya kaynak kullanmak `IDEMPOTENCY_CONFLICT` üretir.
-Yeni inceleme için yeni anahtar kullanın. Vaka ID ve kayıt zamanı çalıştırmaya özgüdür;
-sabit seed, kaynak ve inceleme zamanı iş sonuçlarını tekrar üretir.
+Expected result: `COMPLETED`, `DELIVERY_DELAY=25200`, `SLA_BREACH=true`, three audit
+events and `active_roles=["A21"]`. Repeating the command returns the same persisted
+case/events. Reusing its key with changed inputs returns `IDEMPOTENCY_CONFLICT`;
+use a new key for a new investigation. Case IDs and capture times vary between new
+runs; fixed inputs and an explicit investigation time reproduce business results.
 
-`.env.example` açıklama amaçlıdır; sır veya çevre değişkeni gerekmiyor. CLI kapsamı
-bilerek `demo/local-demo` ile sabittir. `--db` yerel dosyaya yazar; kaynağı değiştirmez.
-CLI hatada sıfırdan farklı çıkış kodu ve sabit hata kodu döndürür.
+## Local HTTP API
 
-## Doğrulama
+Run only on localhost with synthetic data. Authentication uses server-configured
+development Bearer keys; OIDC and production identity management remain planned.
 
-```sh
-sh tools/check.sh
-.venv/bin/pip-audit --skip-editable --format cyclonedx-json --output work/sbom.json
-gitleaks dir . --redact --no-banner
-```
-
-`tools/check.sh` paketi yeniden kurar; böylece testler değiştirdiğiniz kodu kullanır.
-Şemaları değiştirdiğinizde kurulumdan sonra `.venv/bin/python tools/export_schemas.py`
-çalıştırın; testler şema sapmasını yakalar. Gitleaks yerel ayrı araçtır (8.30.1 ile
-kontrol edildi). Güvenlik taraması internet gerektirir. CI aynı kontrolleri Python
-3.12/3.14'te, ayrıca geçmiş/çalışma ağacı sır taramasını çalıştıracak şekilde tanımlıdır.
-İlk uzak CI, Linux üzerinde Python 3.12/3.14 ve sır taraması işlerinde geçti;
-güncel dalın son durumunu PR kontrollerinden izleyin.
-
-Gerçek yerel sonuçlar ve sınırlılıklar [doğrulama kaydında](docs/verification.md).
-Bunlar benchmark başarı oranı veya üretim güvenlik garantisi değildir.
-
-## Rol durumu
-
-[36 rol kataloğu](docs/roles.json): **36 kayıtlı; 1 sınırlı yetenek uygulanmış;
-1 sınırlı yetenek test edilmiş.** A21 SLA uzmanı yalnız `elapsed-seconds-v1` sentetik
-alt kapsamıyla mevcuttur; PDF'deki tam rol kabulü tamamlanmadı. Golden vakada
-**1 etkin rol: A21**. Her vakanın gerçek etkin listesi kendi `active_roles` alanındadır.
-Audit, erişim ve hesaplama altyapısının varlığı diğer rollerin tamamlandığı anlamına gelmez.
-
-## Sınırlar ve planlanan özellikler
-
-Bu bir yerel geliştirme aracıdır. Scope güvenilir çağıran bağlamıdır, kimlik doğrulama
-sistemi değildir. PostgreSQL RLS ve HTTP kaynak yetkileri pilot kapsamında uygulanmıştır.
-OIDC, üretim tenant izolasyonu, gerçek
-SQL/belge adaptörleri, UI, iş günü takvimi, kısmi sevkiyat, kök neden çıkarımı ve
-alternatif maliyet/risk kıyası henüz uygulanmadı.
-
-SLA toleransının **üzeri** ihlaldir. Teslim edilmemiş siparişte `as_of` kullanılır;
-gelecekteki teslimat hesaplanmaz. Tekrarlanan aynı olay tekilleştirilir, çelişkili
-olayda SLA iddiasından kaçınılır. Stok 24 saatten eskiyse veya gelecekteyse belirsizlik
-üretilir. SOP yalnız kanıt olarak raporlanır; eskalasyon görevi açılmaz.
-
-SQLite dosya sahibi audit geçmişini değiştirebilir; üretim audit mühürleme, yedekleme,
-şifreleme ve yetki ayrımı yoktur. İnsan onayı, payload hash bağlı işlem, dış sistem
-idempotency'si, işlem sonrası doğrulama ve telafi ileride uygulanacak. Bunlar olmadan
-dış sistemde yazma işlemi eklenmemelidir.
-
-Sonraki dilim: OIDC ve kaynak/tenant erişim sınırlarının güçlendirilmesi;
-ardından sınırlı agentic yönlendirme ve B0 karşılaştırması. 300 vakalık benchmark,
-B1–B4 sonuçları, 36 tam rol ve PDF'nin 20 sprintlik yol haritası planlıdır.
-
-## Belgeler
-
-- [Pilot kapsamı, kabul ölçütleri ve açık kararlar](docs/adr/000-pilot-scope.md)
-- [Yerel baseline mimari kararı ve güven sınırları](docs/adr/001-local-baseline.md)
-- [Başlangıç depo/erişim doğrulaması](docs/repository-status.md)
-- [Sözleşmeler](schemas/) ve [veri manifesti](fixtures/manifest.json)
-
-Depoda lisans seçilmemiştir; açık kaynak lisansı varsaymayın.
-
-## Geliştiriciler
-
-- [Miraç Keser — mirackeser](https://github.com/mirackeser)
-- [Cansu Kalkan — cansukalkan](https://github.com/cansukalkan)
-
-## Sentetik HTTP API (ikinci dilim)
-
-Sunucu taraflı geliştirme anahtarıyla kimlik/kapsam doğrulanır. Bu OIDC değildir;
-yalnız localhost ve sentetik veri içindir. PostgreSQL adaptörü aşağıdaki ayrı kurulumla kullanılabilir.
+For a fresh checkout:
 
 ```sh
-uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 .venv/bin/python tools/setup_demo_api.py
 export AEGISFLOW_AUTH_FILE=work/api-auth.json
 export AEGISFLOW_SOURCE_ACL_FILE=work/source-acl.json
 export AEGISFLOW_SCENARIO_FILE=fixtures/supply-delay-v1.json
 export AEGISFLOW_DB=work/api.db
-.venv/bin/uvicorn aegisflow.api:from_environment --factory --host 127.0.0.1 --port 8000 --no-access-log
+.venv/bin/uvicorn aegisflow.api:from_environment \
+  --factory --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-Başka terminalde:
+The setup command creates credential, request-header and ACL files with mode 0600.
+It refuses existing files. Keep them outside version control; reuse an existing
+setup rather than overwriting keys. The CLI does not require these environment
+variables; HTTP configuration is explicit and `.env.example` is not auto-loaded.
+
+In another terminal, run this from the repository directory. The header file keeps
+the Bearer value out of the command's arguments:
 
 ```sh
 curl --fail-with-body http://127.0.0.1:8000/v1/cases \
-  -H "Authorization: Bearer $(cat work/api-token)" \
-  -H 'Idempotency-Key: api-demo-001' -H 'Content-Type: application/json' \
-  -d '{"order_id":"PO-001","as_of":"2026-11-01T18:00:00Z"}'
+  --header @work/api-headers \
+  --header 'Idempotency-Key: api-demo-001' \
+  --data '{"order_id":"PO-001","as_of":"2026-11-01T18:00:00Z"}'
 ```
 
-POST senkron 201 ve vaka döndürür; aynı istek aynı vaka/olayları verir.
-GET `/v1/cases/{case_id}`, `/v1/cases/{case_id}/events` ve
-`/v1/cases/{case_id}/evidence/{evidence_id}` aynı Bearer kimliği gerektirir.
-Tenant veya izin istemciden seçilemez. Başka tenant kaydı ve olmayan kayıt aynı
-404 yanıtını verir; izinsiz işlem 403, kimliksiz istek 401, bozuk şema 422,
-anahtar çakışması 409, DB hatası 503 döndürür. Ayrıntılar [ADR-002](docs/adr/002-authenticated-synthetic-api.md).
+The synchronous POST returns HTTP 201 and the case. Authenticated read routes are:
 
-## PostgreSQL persistence
+- `GET /v1/cases/{case_id}`
+- `GET /v1/cases/{case_id}/events`
+- `GET /v1/cases/{case_id}/evidence/{evidence_id}`
 
-PostgreSQL 18 is supported for this synthetic pilot. SQLite remains available for
-the local CLI. Configure credentials outside the repository. First set
-`AEGISFLOW_DATABASE_URL` to a **schema-owner** connection and run:
+Clients cannot supply their tenant or permissions. Errors use stable codes:
+401 unauthenticated, 403 operation denied, 404 missing/denied resource,
+409 idempotency conflict, 422 invalid schema, and 503 unavailable database/policy.
+Input guards return 400 for invalid body length, 408 for the body-read deadline,
+413 for an oversized body, and 431 for oversized headers. Limits also apply to
+streams without a declared length and reject mismatched lengths.
+
+### Source authorization and revocation
+
+`work/source-acl.json` contains a versioned policy matching authenticated subjects
+and exact source URIs. The [policy schema](schemas/SourcePolicy.schema.json) is
+checked into the repository. No wildcard or implicit allow-all grant is supported.
+To revoke access, remove the relevant URI or grant and replace the policy file
+atomically. Subsequent requests reload the file; invalid/unavailable policy fails
+closed instead of reusing previous grants.
+
+Full case/event responses require every recorded input dependency. Individual
+evidence requires its own source grant. Replay cannot bypass a revoked grant.
+Missing/stale source facts are dependencies even without a snapshot. Historical
+cases without recorded dependencies cannot return full reports/events/replays;
+authorized individual evidence remains readable. Regenerate with a new key rather
+than rewriting audit history.
+
+Handled responses use `Cache-Control: no-store`. Revocation does not erase already
+downloaded copies, and an in-flight request can finish under its loaded policy.
+The synthetic CLI and internal storage APIs are trusted local interfaces and do
+not enforce the HTTP policy. See [ADR-005](docs/adr/005-source-evidence-authorization.md).
+
+## PostgreSQL setup and upgrades
+
+PostgreSQL 18 is covered by integration tests. Provision a dedicated development
+database and two roles: a schema owner for explicit migrations and a restricted,
+non-owner runtime identity. Keep connection strings outside the repository.
+
+Set `AEGISFLOW_DATABASE_URL` to the **owner** connection, then apply schema version 2:
 
 ```sh
-uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 .venv/bin/python -m aegisflow.postgres
 ```
 
-The command applies migrations through schema version 2 transactionally; repeating it is safe. Startup
-never migrates implicitly. Configure a separate runtime role using your database
-administrator account (replace `aegisflow_runtime` with your provisioned role):
+Migrations run transactionally and are safe to repeat. Startup verifies the schema
+version and never performs DDL. Grant these privileges to your provisioned runtime
+role (example role name: `aegisflow_runtime`):
 
 ```sql
 GRANT USAGE ON SCHEMA public TO aegisflow_runtime;
@@ -158,80 +141,80 @@ GRANT SELECT ON aegis_schema_version TO aegisflow_runtime;
 GRANT SELECT, INSERT ON aegis_cases, aegis_events TO aegisflow_runtime;
 ```
 
-Switch `AEGISFLOW_DATABASE_URL` to the **non-owner runtime** connection, retain the
-API auth/source configuration described above, then start the same Uvicorn factory.
-When this variable is set, PostgreSQL failure never falls back to SQLite.
-Tenant checks run in the application and PostgreSQL RLS. The HTTP factory rejects
-owner/privileged credentials or disabled RLS. Context comes from trusted server
-authentication; it is not safe against an attacker with arbitrary SQL access.
-Use only synthetic data and localhost. See [ADR-003](docs/adr/003-postgresql-persistence.md).
+Switch `AEGISFLOW_DATABASE_URL` to the **runtime** connection before starting the
+API. Retain the auth/source/ACL environment variables above. PostgreSQL failures
+never silently fall back to SQLite. The HTTP factory rejects ownership, privileged
+role membership, RLS bypass or disabled RLS. Audit mutation is rejected, although
+database owners can still change policies and triggers.
 
-For the full test suite, set `AEGISFLOW_TEST_DATABASE_URL` to an administrative
-connection on a **disposable** PostgreSQL instance, then run `sh tools/check.sh`.
-Tests create/drop isolated databases and temporary runtime roles. Without this
-variable, PostgreSQL integration tests explicitly skip; that is not a validated database
-integration run. CI provides PostgreSQL 18 and runs the complete suite.
+For a v1-to-v2 upgrade, stop the old API, back up the development database, migrate
+with owner credentials, then deploy the new adapter with runtime credentials. Old
+code rejects schema 2. There is no automatic downgrade or zero-downtime guarantee.
+See [ADR-003](docs/adr/003-postgresql-persistence.md) and
+[ADR-004](docs/adr/004-transaction-scoped-tenant-rls.md).
 
-PR titles, descriptions, and review/approval text use English; see
-[Contributing](CONTRIBUTING.md). Historical Turkish design references are retained.
+## Verification
 
-### RLS upgrade (schema version 2)
-
-Stop the previous API before upgrading the synthetic database, take a backup, run
-`.venv/bin/python -m aegisflow.postgres` with the owner connection, and restart the
-new API with the restricted runtime connection. Old adapter code rejects schema 2;
-this is not a zero-downtime deployment. No automatic downgrade is available.
-Migration failure rolls back policy changes and version advancement together.
-
-RLS filters case/audit reads and checks inserts against a transaction-local tenant.
-Missing context fails closed. It protects against missing SQL tenant predicates;
-a compromised server/credential capable of arbitrary SQL can choose another context.
-OIDC, source-level authorization and production acceptance remain planned.
-See [ADR-004](docs/adr/004-transaction-scoped-tenant-rls.md).
-
-## Source and evidence access (HTTP API 0.3)
-
-Every HTTP source read now requires an explicit tenant/subject/source grant as well
-as the existing operation permission. The demo setup creates `work/source-acl.json`
-alongside the token/auth files (0600 permissions). For an existing installation,
-create a separate policy matching the **server-authenticated** subject, for example:
-
-```json
-{
-  "schema_version": 1,
-  "revision": "demo-v1",
-  "grants": [{
-    "tenant_id": "demo",
-    "subject_id": "local-demo",
-    "source_uris": [
-      "synthetic://supply-delay-v1/order",
-      "synthetic://supply-delay-v1/deliveries",
-      "synthetic://supply-delay-v1/sla",
-      "synthetic://supply-delay-v1/inventory",
-      "synthetic://supply-delay-v1/procedure"
-    ]
-  }]
-}
+```sh
+sh tools/check.sh
+mkdir -p work
+.venv/bin/pip-audit --skip-editable --format cyclonedx-json --output work/sbom.json
+gitleaks dir . --redact --no-banner
 ```
 
-Set `AEGISFLOW_SOURCE_ACL_FILE` before starting the server. Missing configuration
-fails startup. Replace the server policy file atomically to change grants; every
-subsequent authenticated request loads it again. Removing a source URI revokes its
-single-evidence read and any full case/event report dependent on it, including
-idempotent POST replays. No new case is created by a denied request. No wildcards or
-prefix matches exist; matching is exact. Invalid/unavailable policy returns generic
-503 rather than reusing previous grants. Denied resources return generic 404.
+`tools/check.sh` reinstalls the checkout before lint, format, strict typing and tests.
+For the complete suite, set `AEGISFLOW_TEST_DATABASE_URL` to an **administrative
+connection on a disposable PostgreSQL instance**. Tests create/drop isolated
+databases and temporary roles. Without it, PostgreSQL tests explicitly skip;
+a skipped integration test is not a verified database behavior.
 
-Historical reports without `input_source_uris` cannot be returned in full or through
-the events/replay path. Individual authorized evidence is still available; use a
-new request key to regenerate a full report with recorded input dependencies.
-Missing and stale source facts count as dependencies too. There is no automatic
-rewriting of existing case/audit records.
+CI provisions PostgreSQL 18 for both Python versions, runs dependency auditing,
+uploads a CycloneDX SBOM and scans the working tree/history with Gitleaks. The local
+Gitleaks command requires the separate tool (8.30.1 was used). Dependency auditing
+requires network access. See [verification records](docs/verification.md) for actual
+results and each PR for current checks; none are a benchmark or security guarantee.
 
-In-flight requests can complete under the policy they loaded. Already downloaded
-content cannot be revoked. Headers disable caching for future responses. The local
-synthetic CLI/internal storage APIs remain trusted interfaces; HTTP policy is not a
-SQL isolation mechanism. OIDC, credential lifecycle, central policy management and
-administrative policy-change auditing remain planned. See
-[ADR-005](docs/adr/005-source-evidence-authorization.md) and
-[policy schema](schemas/SourcePolicy.schema.json).
+After contract changes, reinstall and run `.venv/bin/python tools/export_schemas.py`.
+Tests verify generated schemas and the seeded fixture's provenance/checksum.
+
+## Expert-role status
+
+The [registry](docs/roles.json) contains **36 registered roles**, **1 implemented
+capability subset**, and **1 tested capability subset**. A21 currently supports only
+synthetic elapsed-time SLA analysis, not its entire target contract. The golden
+case activates **one role: A21**; actual per-case activation is in `active_roles`.
+Infrastructure work does not count as completion of additional expert roles.
+
+## Scope, limitations and next steps
+
+SLA uses elapsed UTC seconds, not business calendars. The grace threshold must be
+exceeded for a breach. Undelivered orders use `as_of`; future delivery events are
+excluded from calculations. Exact duplicates are deduplicated, conflicting events
+cause abstention, and stock older than 24 hours or dated in the future is uncertain.
+Procedures are reported as evidence; no escalation task is created.
+
+RLS protects trusted application queries with missing tenant predicates. A SQL actor
+can set another tenant context, so it does not secure a compromised server/database
+credential. HTTP limits bound individual request input; TLS, rate limiting, global
+concurrency budgets and production deployment remain separate work.
+
+Next: review and merge the prerequisite security slices, then introduce OIDC and
+credential lifecycle controls before bounded agentic routing and baseline comparison.
+Real enterprise connectors, UI, root-cause inference, cost/risk alternatives,
+exact-payload human approval, external-action idempotency, postcondition verification,
+compensation, sealed audit, backup/recovery drills and the 300-case benchmark remain
+planned. No production acceptance or measured PDF target is claimed.
+
+## Contributing, security and license
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for engineering and English PR/review
+conventions, and [SECURITY.md](SECURITY.md) for reporting and supported scope.
+Technical decisions live in [docs/adr](docs/adr/); initial Turkish design records
+remain available for historical traceability.
+
+Licensed under [Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution. Project
+code, documentation and generated synthetic fixtures follow this license;
+third-party dependencies retain their own terms. The reference PDF is not bundled.
+
+Maintainers: [Miraç Keser](https://github.com/mirackeser) and
+[Cansu Kalkan](https://github.com/cansukalkan).
