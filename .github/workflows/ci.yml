@@ -17,7 +17,7 @@ jobs:
       - run: sh tools/check.sh
       - name: Dependency audit and SBOM
         run: .venv/bin/pip-audit --skip-editable --format cyclonedx-json --output sbom.json
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: sbom-python-${{ matrix.python }}
@@ -31,5 +31,6 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.25'
+          cache: false
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact --no-banner
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir . --redact --no-banner
