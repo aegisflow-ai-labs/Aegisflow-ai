@@ -100,6 +100,7 @@ def investigate(
         trace_id=f"trace:{case_id}",
         source_version=scenario.dataset_version,
         source_checksum=digest(scenario.model_dump(mode="json")),
+        input_source_uris=scenario.input_source_uris(),
         status=status,
         created_at=now,
         as_of=request.as_of,

@@ -7,6 +7,7 @@ from aegisflow.api import create_app, token_digest
 from aegisflow.contracts import Scope
 from aegisflow.scenario import generate
 from aegisflow.store import Store
+from tests.access_helpers import access_for
 
 
 def test_authenticated_api_and_acl(tmp_path: Path) -> None:
@@ -24,7 +25,12 @@ def test_authenticated_api_and_acl(tmp_path: Path) -> None:
         token_digest(reader): Scope(tenant_id="demo", subject_id="reader", permissions={"read"}),
         token_digest(denied): Scope(tenant_id="demo", subject_id="denied", permissions=set()),
     }
-    app = create_app(Store(tmp_path / "api.db"), credentials, (generate(),))
+    app = create_app(
+        Store(tmp_path / "api.db"),
+        credentials,
+        (generate(),),
+        source_access=access_for(*credentials.values()),
+    )
     # Mutating caller-owned configuration cannot expand a running app's scopes.
     credentials.clear()
     with TestClient(app) as client:
@@ -100,17 +106,25 @@ def test_api_failure_paths(tmp_path: Path, monkeypatch) -> None:
     token = secrets.token_urlsafe(32)
     scope = Scope(tenant_id="demo", subject_id="test", permissions={"read", "investigate"})
     with pytest.raises(ValueError):
-        create_app(store, {}, (generate(),))
+        create_app(store, {}, (generate(),), source_access=access_for(scope))
     with pytest.raises(ValueError):
-        create_app(store, {token: scope}, (generate(),))
+        create_app(store, {token: scope}, (generate(),), source_access=access_for(scope))
     with pytest.raises(ValueError):
-        create_app(store, {token_digest(token): scope}, (generate(), generate()))
+        create_app(
+            store,
+            {token_digest(token): scope},
+            (generate(), generate()),
+            source_access=access_for(scope),
+        )
     auth_file = tmp_path / "auth.json"
     import json
 
     auth_file.write_text(json.dumps({token_digest(token): scope.model_dump(mode="json")}))
     monkeypatch.setenv("AEGISFLOW_AUTH_FILE", str(auth_file))
     monkeypatch.setenv("AEGISFLOW_SCENARIO_FILE", "fixtures/supply-delay-v1.json")
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(access_for(scope).load().model_dump_json())
+    monkeypatch.setenv("AEGISFLOW_SOURCE_ACL_FILE", str(policy_file))
     monkeypatch.setenv("AEGISFLOW_DB", str(tmp_path / "environment.db"))
     with TestClient(from_environment()) as client:
         headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "test-1"}
@@ -123,7 +137,11 @@ def test_api_failure_paths(tmp_path: Path, monkeypatch) -> None:
         raise sqlite3.OperationalError("private database path")
 
     monkeypatch.setattr(store, "read", fail)
-    with TestClient(create_app(store, {token_digest(token): scope}, (generate(),))) as client:
+    with TestClient(
+        create_app(
+            store, {token_digest(token): scope}, (generate(),), source_access=access_for(scope)
+        )
+    ) as client:
         response = client.get("/v1/cases/unknown", headers=headers)
         assert response.status_code == 503
         assert "private" not in response.text

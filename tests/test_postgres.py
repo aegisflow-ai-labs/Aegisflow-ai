@@ -16,6 +16,7 @@ from aegisflow.contracts import Request, Scope
 from aegisflow.postgres import PostgresStore, connect, migrate
 from aegisflow.scenario import generate
 from aegisflow.store import IdempotencyConflict, NotFound, PolicyDenied
+from tests.access_helpers import access_for
 
 SCOPE = Scope(tenant_id="demo", subject_id="test", permissions={"read", "investigate"})
 REQUEST = Request(
@@ -120,7 +121,12 @@ def test_api_postgres_evidence_and_dependency_failure(dsn, runtime_dsn):
 
     token = secrets.token_urlsafe(32)
     migrate(dsn)
-    app = create_app(PostgresStore(runtime_dsn), {token_digest(token): SCOPE}, (generate(),))
+    app = create_app(
+        PostgresStore(runtime_dsn),
+        {token_digest(token): SCOPE},
+        (generate(),),
+        source_access=access_for(SCOPE),
+    )
     headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "http-pg"}
     with TestClient(app) as client:
         body = {"order_id": "PO-001", "as_of": "2026-11-01T18:00:00Z"}
@@ -247,11 +253,13 @@ def test_http_rejects_privileged_or_rls_disabled_runtime(dsn, runtime_dsn):
 
     creds = {token_digest(secrets.token_urlsafe(32)): SCOPE}
     with pytest.raises(ValueError):
-        create_app(PostgresStore(dsn), creds, (generate(),))
+        create_app(PostgresStore(dsn), creds, (generate(),), source_access=access_for(SCOPE))
     with connect(dsn) as db:
         db.execute("ALTER TABLE aegis_cases DISABLE ROW LEVEL SECURITY")
     with pytest.raises(ValueError):
-        create_app(PostgresStore(runtime_dsn), creds, (generate(),))
+        create_app(
+            PostgresStore(runtime_dsn), creds, (generate(),), source_access=access_for(SCOPE)
+        )
 
 
 def test_http_rejects_bypassrls_role(dsn, runtime_dsn):
@@ -310,3 +318,34 @@ def test_failed_rls_migration_rolls_back_policies_and_version(dsn):
 def test_blank_postgres_connection_is_rejected():
     with pytest.raises(ValueError):
         connect("  ")
+
+
+def test_source_revocation_cannot_bypass_postgres_replay(runtime_dsn, tmp_path):
+    import secrets
+
+    from aegisflow.access import SourceAccess, SourcePolicy
+
+    token = secrets.token_urlsafe(32)
+    policy_file = tmp_path / "acl.json"
+    policy_file.write_text(access_for(SCOPE).load().model_dump_json())
+    store = PostgresStore(runtime_dsn)
+    app = create_app(
+        store, {token_digest(token): SCOPE}, (generate(),), source_access=SourceAccess(policy_file)
+    )
+    headers = {"Authorization": f"Bearer {token}", "Idempotency-Key": "pg-revoke"}
+    with TestClient(app) as client:
+        body = {"order_id": "PO-001", "as_of": "2026-11-01T18:00:00Z"}
+        response = client.post("/v1/cases", json=body, headers=headers)
+        assert response.status_code == 201
+        case = response.json()
+        replacement = policy_file.with_suffix(".new")
+        replacement.write_text(SourcePolicy(revision="revoked", grants=()).model_dump_json())
+        replacement.replace(policy_file)
+        for route in (
+            f"/v1/cases/{case['case_id']}",
+            f"/v1/cases/{case['case_id']}/events",
+            f"/v1/cases/{case['case_id']}/evidence/{case['evidence'][0]['evidence_id']}",
+        ):
+            assert client.get(route, headers=headers).status_code == 404
+        assert client.post("/v1/cases", json=body, headers=headers).status_code == 404
+        assert len(store.events(SCOPE, case["case_id"])) == 3
