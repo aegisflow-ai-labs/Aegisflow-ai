@@ -73,7 +73,7 @@ Audit, erişim ve hesaplama altyapısının varlığı diğer rollerin tamamland
 ## Sınırlar ve planlanan özellikler
 
 Bu bir yerel geliştirme aracıdır. Scope güvenilir çağıran bağlamıdır, kimlik doğrulama
-sistemi değildir. Ağ API'si, OIDC, üretim tenant izolasyonu, PostgreSQL/RLS, gerçek
+sistemi değildir. OIDC, üretim tenant izolasyonu, PostgreSQL/RLS, gerçek
 SQL/belge adaptörleri, UI, iş günü takvimi, kısmi sevkiyat, kök neden çıkarımı ve
 alternatif maliyet/risk kıyası henüz uygulanmadı.
 
@@ -87,7 +87,7 @@ SQLite dosya sahibi audit geçmişini değiştirebilir; üretim audit mühürlem
 idempotency'si, işlem sonrası doğrulama ve telafi ileride uygulanacak. Bunlar olmadan
 dış sistemde yazma işlemi eklenmemelidir.
 
-Sonraki dilim: kimliği doğrulanmış API, PostgreSQL ve kaynak/kanıt ACL testleri;
+Sonraki dilim: PostgreSQL migration ve gerçek DB entegrasyon testleri;
 ardından sınırlı agentic yönlendirme ve B0 karşılaştırması. 300 vakalık benchmark,
 B1–B4 sonuçları, 36 tam rol ve PDF'nin 20 sprintlik yol haritası planlıdır.
 
@@ -104,3 +104,33 @@ Depoda lisans seçilmemiştir; açık kaynak lisansı varsaymayın.
 
 - [Miraç Keser — mirackeser](https://github.com/mirackeser)
 - [Cansu Kalkan — cansukalkan](https://github.com/cansukalkan)
+
+## Sentetik HTTP API (ikinci dilim)
+
+Sunucu taraflı geliştirme anahtarıyla kimlik/kapsam doğrulanır. Bu OIDC değildir;
+yalnız localhost ve sentetik veri içindir. PostgreSQL henüz eklenmedi.
+
+```sh
+uv sync --frozen --no-editable --reinstall-package aegisflow-ai
+.venv/bin/python tools/setup_demo_api.py
+export AEGISFLOW_AUTH_FILE=work/api-auth.json
+export AEGISFLOW_SCENARIO_FILE=fixtures/supply-delay-v1.json
+export AEGISFLOW_DB=work/api.db
+.venv/bin/uvicorn aegisflow.api:from_environment --factory --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+Başka terminalde:
+
+```sh
+curl --fail-with-body http://127.0.0.1:8000/v1/cases \
+  -H "Authorization: Bearer $(cat work/api-token)" \
+  -H 'Idempotency-Key: api-demo-001' -H 'Content-Type: application/json' \
+  -d '{"order_id":"PO-001","as_of":"2026-11-01T18:00:00Z"}'
+```
+
+POST senkron 201 ve vaka döndürür; aynı istek aynı vaka/olayları verir.
+GET `/v1/cases/{case_id}`, `/v1/cases/{case_id}/events` ve
+`/v1/cases/{case_id}/evidence/{evidence_id}` aynı Bearer kimliği gerektirir.
+Tenant veya izin istemciden seçilemez. Başka tenant kaydı ve olmayan kayıt aynı
+404 yanıtını verir; izinsiz işlem 403, kimliksiz istek 401, bozuk şema 422,
+anahtar çakışması 409, DB hatası 503 döndürür. Ayrıntılar [ADR-002](docs/adr/002-authenticated-synthetic-api.md).

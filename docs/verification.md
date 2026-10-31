@@ -42,3 +42,19 @@ dış işlem, yük/chaos/yedek geri dönüş ve 300 vakalık benchmark uygulanma
 Güvenlik taramaları bilinen imza ve veri tabanlarıyla sınırlıdır; açık bulunmaması
 sıfır güvenlik açığı anlamına gelmez. İlk entegrasyon 403'ü sonrası yerel gh sorgusuyla
 cansukalkan admin yetkisi doğrulandı. Lisans seçimi açık; yerel sentetik dilimi engellemez.
+
+## İkinci dilim — sentetik HTTP API
+
+Yerel `gh api user` başlangıçta cansukalkan döndürdü. Kullanıcının talebiyle
+`gh auth switch --user mirackeser` uygulandı ve `gh api user` mirackeser döndürdü.
+Git commit kimliği de mirackeser olarak doğrulandı.
+
+`sh tools/check.sh`: 31 test, Ruff lint/format ve strict mypy (7 kaynak dosyası)
+geçti. API TestClient gerçek factory/store üzerinden kimliksiz istek, yanlış tenant,
+read/investigate izin ayrımı, kanıt/olay okuma, eksik idempotency anahtarı, değişen
+istek, gizlenmiş validasyon/DB hataları ve ortamdan başlatmayı doğrular.
+Geliştirme kimliği üretme komutu çalıştırıldı; dosyalar 0600 ve work/ altında.
+Testler kurulu Starlette'ın desteklediği httpx2 istemcisiyle uyarısız geçti.
+Son bağımlılık kümesinde pip-audit exit 0, bilinen açık yok; SBOM work/api-sbom.json.
+PostgreSQL, OIDC ve gerçek ağ sunucusuyla yük testi bu dilimde yapılmadı.
+Uzak son commit sonuçları PR #1'in güncel kontrollerinden okunmalıdır.
