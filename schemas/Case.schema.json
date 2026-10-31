@@ -245,6 +245,16 @@
       "title": "Source Checksum",
       "type": "string"
     },
+    "input_source_uris": {
+      "default": [],
+      "items": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Input Source Uris",
+      "type": "array"
+    },
     "status": {
       "enum": [
         "COMPLETED",

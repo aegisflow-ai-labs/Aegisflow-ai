@@ -74,6 +74,13 @@ class Scenario(Contract):
     sla: SLA | None
     procedure: Procedure | None
 
+    def input_source_uris(self) -> tuple[str, ...]:
+        # Absence/staleness is also information about a source, so retain all inputs.
+        return tuple(
+            f"{self.source_uri}/{name}"
+            for name in ("order", "deliveries", "sla", "inventory", "procedure")
+        )
+
     @model_validator(mode="after")
     def references(self) -> "Scenario":
         for event in self.deliveries:
@@ -119,6 +126,7 @@ class Case(Contract):
     trace_id: Identifier
     source_version: str
     source_checksum: str
+    input_source_uris: tuple[Annotated[str, Field(min_length=1, max_length=1024)], ...] = ()
     status: Literal["COMPLETED", "NEEDS_EVIDENCE"]
     created_at: AwareDatetime
     as_of: AwareDatetime
@@ -132,6 +140,10 @@ class Case(Contract):
     @model_validator(mode="after")
     def links(self) -> "Case":
         refs = {e.evidence_id for e in self.evidence}
+        if self.input_source_uris and any(
+            e.source_uri not in self.input_source_uris for e in self.evidence
+        ):
+            raise ValueError("Evidence source missing from input dependencies")
         if any(set(c.evidence_refs) - refs for c in self.claims):
             raise ValueError("Kanıtsız iddia")
         if any(e.tenant_id != self.tenant_id or e.case_id != self.case_id for e in self.evidence):

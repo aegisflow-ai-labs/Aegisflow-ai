@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import sqlite3
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -12,9 +13,10 @@ import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import AwareDatetime
 
+from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
 from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
@@ -30,18 +32,38 @@ def token_digest(token: str) -> str:
 
 
 def create_app(
-    store: Store | PostgresStore, credentials: dict[str, Scope], sources: tuple[Scenario, ...]
+    store: Store | PostgresStore,
+    credentials: dict[str, Scope],
+    sources: tuple[Scenario, ...],
+    *,
+    source_access: SourceAccess,
 ) -> FastAPI:
     """Only server configuration may assign scopes and source snapshots."""
     if not credentials or any(
         len(key) != 64 or any(c not in "0123456789abcdef" for c in key) for key in credentials
     ):
         raise ValueError("Sunucu için SHA-256 kimlik kayıtları gerekli")
+    if isinstance(store, PostgresStore):
+        store.verify_runtime_role()
+    source_access.load()  # Missing or invalid policy is a startup failure, never allow-all.
     principals = dict(credentials)
     snapshots = {(s.order.tenant_id, s.order.order_id): s.model_copy(deep=True) for s in sources}
     if len(snapshots) != len(sources):
         raise ValueError("Yinelenen kaynak kaydı")
-    app = FastAPI(title="AegisFlow synthetic baseline", version="0.2.0")
+    app = FastAPI(title="AegisFlow synthetic baseline", version="0.3.0")
+
+    @app.middleware("http")
+    async def no_cache(
+        request: HTTPRequest, call_next: Callable[[HTTPRequest], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        return response
+
+    @app.exception_handler(SourcePolicyUnavailable)
+    async def policy_unavailable(_: HTTPRequest, __: SourcePolicyUnavailable) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
 
     def authenticate(authorization: Annotated[str | None, Header()] = None) -> Scope:
         if authorization is not None and authorization.startswith("Bearer "):
@@ -82,36 +104,54 @@ def create_app(
         body: CreateCase,
         scope: Annotated[Scope, Depends(authenticate)],
         idempotency_key: Annotated[Identifier, Header()],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
     ) -> Case:
         Store.authorize(scope, scope.tenant_id, "investigate")
         source = snapshots.get((scope.tenant_id, body.order_id))
         if source is None:
             raise NotFound()
+        policy.authorize(scope, source.input_source_uris())
         request = Request(
             tenant_id=scope.tenant_id,
             order_id=body.order_id,
             idempotency_key=idempotency_key,
             as_of=body.as_of,
         )
-        return store.run(scope, request, source)
+        case = store.run(scope, request, source)
+        policy.authorize(scope, case.input_source_uris)
+        return case
 
     @app.get("/v1/cases/{case_id}", response_model=Case)
-    def read(case_id: str, scope: Annotated[Scope, Depends(authenticate)]) -> Case:
-        return store.read(scope, case_id)
+    def read(
+        case_id: str,
+        scope: Annotated[Scope, Depends(authenticate)],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
+    ) -> Case:
+        case = store.read(scope, case_id)
+        policy.authorize(scope, case.input_source_uris)
+        return case
 
     @app.get("/v1/cases/{case_id}/events", response_model=tuple[AuditEvent, ...])
     def events(
-        case_id: str, scope: Annotated[Scope, Depends(authenticate)]
+        case_id: str,
+        scope: Annotated[Scope, Depends(authenticate)],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
     ) -> tuple[AuditEvent, ...]:
+        case = store.read(scope, case_id)
+        policy.authorize(scope, case.input_source_uris)
         return store.events(scope, case_id)
 
     @app.get("/v1/cases/{case_id}/evidence/{evidence_id}", response_model=Evidence)
     def evidence(
-        case_id: str, evidence_id: str, scope: Annotated[Scope, Depends(authenticate)]
+        case_id: str,
+        evidence_id: str,
+        scope: Annotated[Scope, Depends(authenticate)],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
     ) -> Evidence:
         case = store.read(scope, case_id)
         for item in case.evidence:
             if item.evidence_id == evidence_id:
+                policy.authorize(scope, (item.source_uri,))
                 return item
         raise NotFound()
 
@@ -130,4 +170,9 @@ def from_environment() -> FastAPI:
         store: Store | PostgresStore = PostgresStore(os.environ["AEGISFLOW_DATABASE_URL"])
     else:
         store = Store(Path(os.environ["AEGISFLOW_DB"]))
-    return create_app(store, credentials, (source,))
+    return create_app(
+        store,
+        credentials,
+        (source,),
+        source_access=SourceAccess(Path(os.environ["AEGISFLOW_SOURCE_ACL_FILE"])),
+    )

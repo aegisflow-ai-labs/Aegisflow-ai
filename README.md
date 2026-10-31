@@ -73,7 +73,8 @@ Audit, erişim ve hesaplama altyapısının varlığı diğer rollerin tamamland
 ## Sınırlar ve planlanan özellikler
 
 Bu bir yerel geliştirme aracıdır. Scope güvenilir çağıran bağlamıdır, kimlik doğrulama
-sistemi değildir. OIDC, üretim tenant izolasyonu, RLS, gerçek
+sistemi değildir. PostgreSQL RLS ve HTTP kaynak yetkileri pilot kapsamında uygulanmıştır.
+OIDC, üretim tenant izolasyonu, gerçek
 SQL/belge adaptörleri, UI, iş günü takvimi, kısmi sevkiyat, kök neden çıkarımı ve
 alternatif maliyet/risk kıyası henüz uygulanmadı.
 
@@ -114,6 +115,7 @@ yalnız localhost ve sentetik veri içindir. PostgreSQL adaptörü aşağıdaki 
 uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 .venv/bin/python tools/setup_demo_api.py
 export AEGISFLOW_AUTH_FILE=work/api-auth.json
+export AEGISFLOW_SOURCE_ACL_FILE=work/source-acl.json
 export AEGISFLOW_SCENARIO_FILE=fixtures/supply-delay-v1.json
 export AEGISFLOW_DB=work/api.db
 .venv/bin/uvicorn aegisflow.api:from_environment --factory --host 127.0.0.1 --port 8000 --no-access-log
@@ -146,7 +148,7 @@ uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 .venv/bin/python -m aegisflow.postgres
 ```
 
-The command applies migration 1 transactionally; repeating it is safe. Startup
+The command applies migrations through schema version 2 transactionally; repeating it is safe. Startup
 never migrates implicitly. Configure a separate runtime role using your database
 administrator account (replace `aegisflow_runtime` with your provisioned role):
 
@@ -159,14 +161,77 @@ GRANT SELECT, INSERT ON aegis_cases, aegis_events TO aegisflow_runtime;
 Switch `AEGISFLOW_DATABASE_URL` to the **non-owner runtime** connection, retain the
 API auth/source configuration described above, then start the same Uvicorn factory.
 When this variable is set, PostgreSQL failure never falls back to SQLite.
-Tenant checks are application controls; PostgreSQL RLS is **not implemented**.
+Tenant checks run in the application and PostgreSQL RLS. The HTTP factory rejects
+owner/privileged credentials or disabled RLS. Context comes from trusted server
+authentication; it is not safe against an attacker with arbitrary SQL access.
 Use only synthetic data and localhost. See [ADR-003](docs/adr/003-postgresql-persistence.md).
 
 For the full test suite, set `AEGISFLOW_TEST_DATABASE_URL` to an administrative
 connection on a **disposable** PostgreSQL instance, then run `sh tools/check.sh`.
 Tests create/drop isolated databases and temporary runtime roles. Without this
-variable, nine PostgreSQL tests explicitly skip; that is not a validated database
+variable, PostgreSQL integration tests explicitly skip; that is not a validated database
 integration run. CI provides PostgreSQL 18 and runs the complete suite.
 
 PR titles, descriptions, and review/approval text use English; see
 [Contributing](CONTRIBUTING.md). Historical Turkish design references are retained.
+
+### RLS upgrade (schema version 2)
+
+Stop the previous API before upgrading the synthetic database, take a backup, run
+`.venv/bin/python -m aegisflow.postgres` with the owner connection, and restart the
+new API with the restricted runtime connection. Old adapter code rejects schema 2;
+this is not a zero-downtime deployment. No automatic downgrade is available.
+Migration failure rolls back policy changes and version advancement together.
+
+RLS filters case/audit reads and checks inserts against a transaction-local tenant.
+Missing context fails closed. It protects against missing SQL tenant predicates;
+a compromised server/credential capable of arbitrary SQL can choose another context.
+OIDC, source-level authorization and production acceptance remain planned.
+See [ADR-004](docs/adr/004-transaction-scoped-tenant-rls.md).
+
+## Source and evidence access (HTTP API 0.3)
+
+Every HTTP source read now requires an explicit tenant/subject/source grant as well
+as the existing operation permission. The demo setup creates `work/source-acl.json`
+alongside the token/auth files (0600 permissions). For an existing installation,
+create a separate policy matching the **server-authenticated** subject, for example:
+
+```json
+{
+  "schema_version": 1,
+  "revision": "demo-v1",
+  "grants": [{
+    "tenant_id": "demo",
+    "subject_id": "local-demo",
+    "source_uris": [
+      "synthetic://supply-delay-v1/order",
+      "synthetic://supply-delay-v1/deliveries",
+      "synthetic://supply-delay-v1/sla",
+      "synthetic://supply-delay-v1/inventory",
+      "synthetic://supply-delay-v1/procedure"
+    ]
+  }]
+}
+```
+
+Set `AEGISFLOW_SOURCE_ACL_FILE` before starting the server. Missing configuration
+fails startup. Replace the server policy file atomically to change grants; every
+subsequent authenticated request loads it again. Removing a source URI revokes its
+single-evidence read and any full case/event report dependent on it, including
+idempotent POST replays. No new case is created by a denied request. No wildcards or
+prefix matches exist; matching is exact. Invalid/unavailable policy returns generic
+503 rather than reusing previous grants. Denied resources return generic 404.
+
+Historical reports without `input_source_uris` cannot be returned in full or through
+the events/replay path. Individual authorized evidence is still available; use a
+new request key to regenerate a full report with recorded input dependencies.
+Missing and stale source facts count as dependencies too. There is no automatic
+rewriting of existing case/audit records.
+
+In-flight requests can complete under the policy they loaded. Already downloaded
+content cannot be revoked. Headers disable caching for future responses. The local
+synthetic CLI/internal storage APIs remain trusted interfaces; HTTP policy is not a
+SQL isolation mechanism. OIDC, credential lifecycle, central policy management and
+administrative policy-change auditing remain planned. See
+[ADR-005](docs/adr/005-source-evidence-authorization.md) and
+[policy schema](schemas/SourcePolicy.schema.json).

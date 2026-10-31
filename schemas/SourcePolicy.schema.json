@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "SourceGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "subject_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "source_uris": {
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Source Uris",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "tenant_id",
+        "subject_id",
+        "source_uris"
+      ],
+      "title": "SourceGrant",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "revision": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Revision",
+      "type": "string"
+    },
+    "grants": {
+      "items": {
+        "$ref": "#/$defs/SourceGrant"
+      },
+      "title": "Grants",
+      "type": "array"
+    }
+  },
+  "required": [
+    "revision",
+    "grants"
+  ],
+  "title": "SourcePolicy",
+  "type": "object"
+}
