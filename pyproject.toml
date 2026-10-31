@@ -1,0 +1,26 @@
+[project]
+name = "aegisflow-ai"
+version = "0.1.0"
+description = "Deterministic evidence-linked supplier delay baseline"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.12,<3"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.14,<1", "mypy>=1.18,<2", "pip-audit>=2.9,<3"]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aegisflow"]

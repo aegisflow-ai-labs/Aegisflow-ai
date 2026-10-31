@@ -1,0 +1,364 @@
+[
+  {
+    "role_id": "A01",
+    "name": "Talep sınıflandırıcı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A02",
+    "name": "Kimlik ve kapsam bekçisi",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A03",
+    "name": "Hedef ayrıştırıcı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A04",
+    "name": "Planlayıcı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A05",
+    "name": "Yönlendirici",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A06",
+    "name": "Bütçe yöneticisi",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A07",
+    "name": "Bilgi erişim uzmanı",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A08",
+    "name": "Belge ayrıştırıcı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A09",
+    "name": "Varlık eşleştirici",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A10",
+    "name": "Politika yorumlayıcı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A11",
+    "name": "Süreç modelleyici",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A12",
+    "name": "İş kuralı değerlendirici",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A13",
+    "name": "SQL analiz uzmanı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A14",
+    "name": "Metrik hesaplayıcı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A15",
+    "name": "Zaman çizgisi uzmanı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A16",
+    "name": "Anomali araştırıcısı",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A17",
+    "name": "Kök neden uzmanı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A18",
+    "name": "Seçenek üretici",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A19",
+    "name": "Maliyet analisti",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A20",
+    "name": "Risk analisti",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A21",
+    "name": "SLA uzmanı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": true,
+    "tested": true,
+    "scope": "elapsed-seconds-v1 synthetic SLA subset",
+    "tests": [
+      "tests/test_baseline.py"
+    ]
+  },
+  {
+    "role_id": "A22",
+    "name": "Gizlilik denetçisi",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A23",
+    "name": "Enjeksiyon tarayıcı",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A24",
+    "name": "Kanıt doğrulayıcı",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A25",
+    "name": "Karşıt görüş uzmanı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A26",
+    "name": "Uzlaşma sentezleyici",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A27",
+    "name": "Güven kalibratörü",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A28",
+    "name": "İnsan onay koordinatörü",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A29",
+    "name": "Eylem hazırlayıcı",
+    "design_mode": "Karma",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A30",
+    "name": "Eylem yürütücü",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A31",
+    "name": "Sonuç doğrulayıcı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A32",
+    "name": "Telafi koordinatörü",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A33",
+    "name": "Rapor yazarı",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A34",
+    "name": "Denetim kayıtçısı",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A35",
+    "name": "Deney değerlendiricisi",
+    "design_mode": "Kural",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  },
+  {
+    "role_id": "A36",
+    "name": "Bilgi küratörü",
+    "design_mode": "LLM",
+    "registered": true,
+    "implemented": false,
+    "tested": false,
+    "scope": "planned",
+    "tests": []
+  }
+]

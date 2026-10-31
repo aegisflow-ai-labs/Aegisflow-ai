@@ -1,85 +1,105 @@
 # AegisFlow AI
 
-**Evidence-driven multi-agent decision support and controlled workflow automation.**
+Evidence-driven multi-agent decision support and controlled workflow automation.
 
-AegisFlow AI is an early-stage engineering and research project exploring how specialized AI agents, deterministic rules, and human oversight can support enterprise operations.
+AegisFlow AI, kurumsal operasyon vakalarını kanıtlarla araştırmayı ve insan tarafından
+onaylanmış eylemleri kontrollü yürütmeyi hedefleyen erken aşama bir mühendislik projesidir.
+Teknik PDF hedef tasarımdır; performans değerleri ölçülmüş sonuç değildir.
 
-The platform is designed to investigate operational cases, gather traceable evidence, compare possible actions, and execute explicitly approved operations through constrained tools.
+## Mevcut çalışan dilim
 
-## Project status
+**Yerel, sentetik, LLM içermeyen B0 başlangıç akışı:** vaka oluşturma → sipariş,
+teslimat, stok, SLA ve prosedür snapshotlarını okuma → UTC gecikme/SLA hesabı →
+kaynağa bağlı iddialar veya açık çekimserlik → atomik SQLite vaka ve audit kaydı.
 
-**Planning and initial development.**
+- Kapalı Pydantic v1 sözleşmeleri ve sürümlenen JSON Schema dosyaları.
+- Seed=42 ile aynı veri; fixture checksum ve golden beklenti.
+- Kaynak sürümü, snapshot ve SHA-256 ile her iddianın kanıt bağlantısı.
+- Aynı anahtarlı aynı istekte aynı vaka; değişen istek/kaynak/kimlikte açık hata.
+- Eşzamanlı tekrarlar, rollback, tenant/işlem kapsamı ve append-only audit testleri.
+- Yerel CLI JSON raporu. Model çağrısı 0; dış iş sisteminde yan etki yok.
 
-The architecture describes a target system. Agent roles, integrations, evaluation targets, and operational capabilities are planned unless explicitly documented as implemented and tested.
+## Kurulum ve demo
 
-## Initial use case
+Python 3.12+ ve uv 0.13.4 gerekir. Yerel olarak Python 3.14.5 doğrulandı.
+Depoyu klonlayıp köküne geçin:
 
-Investigate supplier delivery delays using synthetic purchase orders, inventory events, service-level agreements, and internal procedures.
+```sh
+git clone https://github.com/aegisflow-ai-labs/Aegisflow-ai.git
+cd Aegisflow-ai
+uv sync --frozen --no-editable --reinstall-package aegisflow-ai
+mkdir -p work
+.venv/bin/python -m aegisflow generate --seed 42 > work/scenario.json
+.venv/bin/python -m aegisflow run --scenario work/scenario.json --db work/demo.db --key demo-001 --as-of 2026-11-01T18:00:00Z
+```
 
-The intended workflow is:
+Beklenen: `COMPLETED`, `DELIVERY_DELAY=25200`, `SLA_BREACH=true`, üç audit olayı,
+`active_roles=["A21"]`. Aynı son komutu tekrar çalıştırmak aynı vaka/olayları döndürür.
+Aynı anahtarla farklı `--as-of` veya kaynak kullanmak `IDEMPOTENCY_CONFLICT` üretir.
+Yeni inceleme için yeni anahtar kullanın. Vaka ID ve kayıt zamanı çalıştırmaya özgüdür;
+sabit seed, kaynak ve inceleme zamanı iş sonuçlarını tekrar üretir.
 
-1. Validate the request and access scope.
-2. Build a bounded investigation plan.
-3. Collect document and structured-data evidence.
-4. Evaluate business rules and alternative explanations.
-5. Present a source-linked recommendation and remaining uncertainty.
-6. Request human approval for any external action.
-7. Execute the approved action and verify its outcome.
+`.env.example` açıklama amaçlıdır; sır veya çevre değişkeni gerekmiyor. CLI kapsamı
+bilerek `demo/local-demo` ile sabittir. `--db` yerel dosyaya yazar; kaynağı değiştirmez.
+CLI hatada sıfırdan farklı çıkış kodu ve sabit hata kodu döndürür.
 
-## Design principles
+## Doğrulama
 
-- Evidence-linked claims and explicit uncertainty.
-- Deterministic calculations and policy enforcement.
-- Selective activation of specialized agents.
-- Human approval bound to the exact proposed action.
-- Least-privilege tools and tenant-aware access.
-- Idempotent execution and auditable state transitions.
-- Reproducible scenarios, baselines, and evaluation.
+```sh
+sh tools/check.sh
+.venv/bin/pip-audit --skip-editable --format cyclonedx-json --output work/sbom.json
+gitleaks dir . --redact --no-banner
+```
 
-## Agent architecture
+`tools/check.sh` paketi yeniden kurar; böylece testler değiştirdiğiniz kodu kullanır.
+Şemaları değiştirdiğinizde kurulumdan sonra `.venv/bin/python tools/export_schemas.py`
+çalıştırın; testler şema sapmasını yakalar. Gitleaks yerel ayrı araçtır (8.30.1 ile
+kontrol edildi). Güvenlik taraması internet gerektirir. CI aynı kontrolleri Python
+3.12/3.14'te, ayrıca geçmiş/çalışma ağacı sır taramasını çalıştıracak şekilde tanımlıdır.
+Uzak CI sonucu ancak GitHub'da gerçekten çalışınca doğrulanmış sayılır.
 
-The target design defines 36 specialized roles spanning planning, retrieval, business analysis, verification, security, approval, execution, and evaluation.
+Gerçek yerel sonuçlar ve sınırlılıklar [doğrulama kaydında](docs/verification.md).
+Bunlar benchmark başarı oranı veya üretim güvenlik garantisi değildir.
 
-Roles may be implemented as deterministic functions, bounded LLM workers, or hybrid components. The system will activate only the roles required by a case.
+## Rol durumu
 
-Registered, implemented, evaluated, and active roles will be reported separately.
+[36 rol kataloğu](docs/roles.json): **36 kayıtlı; 1 sınırlı yetenek uygulanmış;
+1 sınırlı yetenek test edilmiş.** A21 SLA uzmanı yalnız `elapsed-seconds-v1` sentetik
+alt kapsamıyla mevcuttur; PDF'deki tam rol kabulü tamamlanmadı. Golden vakada
+**1 etkin rol: A21**. Her vakanın gerçek etkin listesi kendi `active_roles` alanındadır.
+Audit, erişim ve hesaplama altyapısının varlığı diğer rollerin tamamlandığı anlamına gelmez.
 
-## Initial development scope
+## Sınırlar ve planlanan özellikler
 
-- One operational case type.
-- Synthetic business data and versioned documents.
-- Read-only evidence collection.
-- A deterministic baseline before agentic expansion.
-- Structured agent inputs and outputs.
-- Case history and evidence provenance.
-- A narrowly scoped, human-approved action adapter.
-- Offline evaluation and failure-injection scenarios.
+Bu bir yerel geliştirme aracıdır. Scope güvenilir çağıran bağlamıdır, kimlik doğrulama
+sistemi değildir. Ağ API'si, OIDC, üretim tenant izolasyonu, PostgreSQL/RLS, gerçek
+SQL/belge adaptörleri, UI, iş günü takvimi, kısmi sevkiyat, kök neden çıkarımı ve
+alternatif maliyet/risk kıyası henüz uygulanmadı.
 
-## Evaluation plan
+SLA toleransının **üzeri** ihlaldir. Teslim edilmemiş siparişte `as_of` kullanılır;
+gelecekteki teslimat hesaplanmaz. Tekrarlanan aynı olay tekilleştirilir, çelişkili
+olayda SLA iddiasından kaçınılır. Stok 24 saatten eskiyse veya gelecekteyse belirsizlik
+üretilir. SOP yalnız kanıt olarak raporlanır; eskalasyon görevi açılmaz.
 
-Planned comparisons include a deterministic workflow, a single-agent baseline, and selectively routed multi-agent variants.
+SQLite dosya sahibi audit geçmişini değiştirebilir; üretim audit mühürleme, yedekleme,
+şifreleme ve yetki ayrımı yoktur. İnsan onayı, payload hash bağlı işlem, dış sistem
+idempotency'si, işlem sonrası doğrulama ve telafi ileride uygulanacak. Bunlar olmadan
+dış sistemde yazma işlemi eklenmemelidir.
 
-Evaluation will measure task success, evidence support, appropriate abstention, unauthorized actions, latency, cost, and human review effort.
+Sonraki dilim: kimliği doğrulanmış API, PostgreSQL ve kaynak/kanıt ACL testleri;
+ardından sınırlı agentic yönlendirme ve B0 karşılaştırması. 300 vakalık benchmark,
+B1–B4 sonuçları, 36 tam rol ve PDF'nin 20 sprintlik yol haritası planlıdır.
 
-No benchmark results are claimed at this stage.
+## Belgeler
 
-## Roadmap
+- [Pilot kapsamı, kabul ölçütleri ve açık kararlar](docs/adr/000-pilot-scope.md)
+- [Yerel baseline mimari kararı ve güven sınırları](docs/adr/001-local-baseline.md)
+- [Başlangıç depo/erişim doğrulaması](docs/repository-status.md)
+- [Sözleşmeler](schemas/) ve [veri manifesti](fixtures/manifest.json)
 
-1. Define requirements, data contracts, and architectural decisions.
-2. Build a deterministic end-to-end vertical slice.
-3. Add evidence collection and provenance.
-4. Introduce bounded planning and specialist routing.
-5. Implement verification and human-approved execution.
-6. Expand specialist coverage and evaluate against baselines.
-7. Harden security, recovery, observability, and deployment.
+Depoda lisans seçilmemiştir; açık kaynak lisansı varsaymayın.
 
-## Documentation
+## Geliştiriciler
 
-Architecture decisions, requirements, agent contracts, evaluation protocols, and operational runbooks will be maintained alongside the source code.
-
-Setup commands will be added when a runnable implementation is available.
-
-## Maintainers
-
-- [Miraç Keser](https://github.com/mirackeser)
-- [Cansu Kalkan](https://github.com/cansukalkan)
+- [Miraç Keser — mirackeser](https://github.com/mirackeser)
+- [Cansu Kalkan — cansukalkan](https://github.com/cansukalkan)
