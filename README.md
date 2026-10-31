@@ -56,7 +56,8 @@ gitleaks dir . --redact --no-banner
 çalıştırın; testler şema sapmasını yakalar. Gitleaks yerel ayrı araçtır (8.30.1 ile
 kontrol edildi). Güvenlik taraması internet gerektirir. CI aynı kontrolleri Python
 3.12/3.14'te, ayrıca geçmiş/çalışma ağacı sır taramasını çalıştıracak şekilde tanımlıdır.
-Uzak CI sonucu ancak GitHub'da gerçekten çalışınca doğrulanmış sayılır.
+İlk uzak CI, Linux üzerinde Python 3.12/3.14 ve sır taraması işlerinde geçti;
+güncel dalın son durumunu PR kontrollerinden izleyin.
 
 Gerçek yerel sonuçlar ve sınırlılıklar [doğrulama kaydında](docs/verification.md).
 Bunlar benchmark başarı oranı veya üretim güvenlik garantisi değildir.

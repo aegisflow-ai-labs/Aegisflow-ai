@@ -14,7 +14,8 @@
 - GitHub license=null; lisans seçimi açık. Bu değişiklik lisans eklemez.
 - README her iki geliştiriciyi listeliyor. cansukalkan için collaborator permission
   sorgusu entegrasyonun 403 Resource not accessible by integration yanıtıyla
-  sonuçlandı; erişimi/yetki düzeyi doğrulanamadı. Üyelik daveti gönderilmedi.
+  sonuçlandı. Ardından yerel gh ile aynı salt okunur sorgu başarılı oldu:
+  cansukalkan permission=admin, role_name=admin. Üyelik daveti gönderilmedi.
 - Yerel klon repository/ altında; çalışma dalı feat/deterministic-supply-delay.
 
 Kaynaklar: bağlı GitHub get_repo, get_user_login, fetch metadata ve klonun git/dosya

@@ -32,10 +32,13 @@ geçersiz sistem saati; CLI hata kodları; şema sapması; rol durumları ve fix
 
 ## Doğrulanmamış veya kapsam dışı
 
-GitHub Actions henüz uzak sunucuda çalıştırılmadı. Python 3.12 yerel çalıştırılmadı;
-CI matrisi tanımlıdır. Pipeline'ın Linux çalışması henüz kanıtlanmadı.
+İlk uzak CI çalışması [41251344710](https://github.com/aegisflow-ai-labs/Aegisflow-ai/actions/runs/41251344710)
+başarılı: Linux üzerinde Python 3.12 ve 3.14 kod/test kontrolleri, bağımlılık taraması,
+SBOM yüklemesi ve geçmiş/çalışma ağacı sır taramaları geçti. Ardından CI action
+sürümleri Node 24 kullanan SHA'lara sabitlendi ve runner ubuntu-24.04 olarak sabitlendi;
+bu son değişikliğin kontrol sonucu PR kontrollerinden ayrıca okunmalıdır.
 PostgreSQL migration, OIDC, gerçek kaynak adaptörü, üretim yetkilendirmesi, onaylı
 dış işlem, yük/chaos/yedek geri dönüş ve 300 vakalık benchmark uygulanmadı.
 Güvenlik taramaları bilinen imza ve veri tabanlarıyla sınırlıdır; açık bulunmaması
-sıfır güvenlik açığı anlamına gelmez. cansukalkan erişimi entegrasyon 403'ü nedeniyle
-doğrulanamadı. Lisans seçimi açık; bu konular yerel sentetik dilimi engellemez.
+sıfır güvenlik açığı anlamına gelmez. İlk entegrasyon 403'ü sonrası yerel gh sorgusuyla
+cansukalkan admin yetkisi doğrulandı. Lisans seçimi açık; yerel sentetik dilimi engellemez.
