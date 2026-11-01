@@ -173,7 +173,7 @@ def test_browser_ui_csrf_idempotency_revocation_and_host(flow, tmp_path):
         assert client.get("/", headers={"Host": "evil.invalid"}).status_code == 400
         assert client.get("/").status_code == 200
         for path in ("/cases", "/evidence", "/activity", "/access"):
-            assert client.get(path).status_code == 401
+            assert client.get(path, follow_redirects=False).status_code == 303
         assert client.get("/auth/callback?code=x&state=x&iss=x").status_code == 400
         sid = session(flow)
         client.cookies.set(COOKIE, sid)
@@ -355,3 +355,50 @@ def test_persisted_cutoff_invalidates_browser_session_and_cannot_resurrect(flow)
     policy_file.write_text(original)
     with pytest.raises(Unauthenticated):
         flow.user(sid)
+
+
+@pytest.mark.parametrize(
+    "target,expected",
+    [
+        ("/actions", "/actions"),
+        ("/cases/case-123", "/cases/case-123"),
+        ("https://evil.invalid/", "/"),
+        ("//evil.invalid", "/"),
+        ("/%2f%2fevil.invalid", "/"),
+        ("/actions/../../auth/logout", "/"),
+        ("/actions?next=https://evil.invalid", "/"),
+    ],
+)
+def test_login_returns_to_validated_bound_destination(flow, tmp_path, target, expected):
+    app = create_app(
+        Store(tmp_path / "return.db"),
+        {},
+        (generate(),),
+        source_access=access_for(SCOPE),
+        identity=flow.identity,
+        browser_login=flow,
+    )
+    with TestClient(app, base_url="http://127.0.0.1:8000", follow_redirects=False) as client:
+        unauth = client.get("/actions")
+        assert unauth.status_code == 303
+        assert unauth.headers["location"] == "/auth/login?next=%2Factions"
+        assert client.get("/v1/cases").status_code == 401
+        start = client.get("/auth/login", params={"next": target})
+        args = parse_qs(urlsplit(start.headers["location"]).query)
+        flow.test_nonce = args["nonce"][0]
+        callback = client.get(
+            "/auth/callback",
+            params={
+                "state": args["state"][0],
+                "code": "code",
+                "iss": ISSUER,
+                "next": "https://evil.invalid",
+            },
+        )
+        assert callback.status_code == 303
+        assert callback.headers["location"] == expected
+        client.cookies.clear()
+        client.cookies.set(COOKIE, "invalid")
+        expired = client.post("/demo/investigate", data={"csrf": "expired", "key": "x"})
+        assert expired.status_code == 401
+        assert "Your session has ended." in expired.text

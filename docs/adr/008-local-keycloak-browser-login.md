@@ -65,3 +65,13 @@ complete accessibility audit or production security acceptance.
 References: [Keycloak Docker guide](https://www.keycloak.org/getting-started/getting-started-docker),
 [realm import](https://www.keycloak.org/server/importExport),
 [OAuth security best current practice](https://www.rfc-editor.org/rfc/rfc9700.html).
+
+## Protected browser navigation
+
+Unauthenticated GET requests to workspace pages redirect into local sign-in and
+return to the requested page afterward. The destination is an allowlisted local
+route stored with the single-use pending login and copied into its session.
+External URLs, encoded paths and callback-supplied return destinations are not
+trusted. API requests retain JSON 401 responses. Expired browser mutations show a
+sign-in recovery page and require manual resubmission; no write is automatically
+replayed.

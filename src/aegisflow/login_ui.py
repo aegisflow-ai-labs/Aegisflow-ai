@@ -6,6 +6,7 @@ from html import escape
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
@@ -280,10 +281,37 @@ def mount_login(
     read_action: Callable[[Scope, str], Action | None],
     change_action: Callable[[Scope, str, str, str | None], Action],
 ) -> None:
+    @app.exception_handler(HTTPException)
+    async def browser_auth_error(request: Request, error: HTTPException) -> Response:
+        if (
+            error.status_code == 401
+            and request.url.path in ("/demo/investigate", "/auth/logout")
+            or (error.status_code == 401 and request.url.path.startswith("/actions/"))
+        ):
+            target = (
+                "/access"
+                if request.url.path == "/auth/logout"
+                else "/cases"
+                if request.url.path == "/demo/investigate"
+                else request.url.path
+            )
+            return page(
+                '<section class="hero"><h1>Your session has ended.</h1><p class="lead">Sign in again, then review and submit your request. Nothing was automatically retried.</p><a class="button" href="/auth/login?'
+                + escape(urlencode({"next": target}), quote=True)
+                + '">Sign in again</a></section>',
+                401,
+            )
+        return await http_exception_handler(request, error)
+
     def current(request: Request) -> tuple[Scope, Session]:
         try:
             return flow.user(request.cookies.get(COOKIE))
         except Unauthenticated as error:
+            if request.method == "GET":
+                raise HTTPException(
+                    303,
+                    headers={"Location": "/auth/login?" + urlencode({"next": request.url.path})},
+                ) from error
             raise HTTPException(401, detail="UNAUTHENTICATED") from error
 
     def form(request: Request, payload: bytes) -> dict[str, str]:
@@ -606,9 +634,9 @@ def mount_login(
         )
 
     @app.get("/auth/login")
-    def login() -> RedirectResponse:
+    def login(next: str = "/") -> RedirectResponse:
         try:
-            location, binding = flow.begin()
+            location, binding = flow.begin(next)
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
         response = RedirectResponse(location, status_code=303)
@@ -639,7 +667,7 @@ def mount_login(
             )
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(flow.user(sid)[1].return_to, status_code=303)
         response.set_cookie(COOKIE, sid, max_age=600, httponly=True, samesite="lax", path="/")
         response.delete_cookie(BINDING, path="/auth")
         response.headers["Referrer-Policy"] = "no-referrer"
