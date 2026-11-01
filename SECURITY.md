@@ -35,3 +35,13 @@ Never place credentials in issues, source, fixtures or logs. Demo credential fil
 are local, mode 0600, and ignored under work/. Rotate any exposed credential even
 if a scanner reports no findings. Scan results cover known signatures/advisories
 and the tested snapshot; newly enabled repository scans may still be processing.
+
+## Signed access-token mode
+
+Optional JWT mode verifies signatures, issuer/audience, type, required claims and
+integer time bounds using a trusted local public-key file. It does not accept
+header-supplied keys/URLs or downgrade to development credentials. Server mappings,
+not token role/tenant claims, determine permissions. Public key and principal/JTI
+revocation updates apply to subsequent requests. See ADR-007 for the narrow supported
+profile and remaining OIDC/provider lifecycle work. The disposable demo signs only
+local synthetic requests and is not an authorization server or browser login.

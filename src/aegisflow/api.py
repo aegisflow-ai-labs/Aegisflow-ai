@@ -19,6 +19,7 @@ from pydantic import AwareDatetime
 from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
 from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
 from .http_limits import RequestLimits
+from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
 
@@ -38,10 +39,16 @@ def create_app(
     sources: tuple[Scenario, ...],
     *,
     source_access: SourceAccess,
+    identity: JWTIdentity | None = None,
 ) -> FastAPI:
     """Only server configuration may assign scopes and source snapshots."""
-    if not credentials or any(
-        len(key) != 64 or any(c not in "0123456789abcdef" for c in key) for key in credentials
+    if identity is not None and credentials:
+        raise ValueError("Authentication modes must not be mixed")
+    if identity is None and (
+        not credentials
+        or any(
+            len(key) != 64 or any(c not in "0123456789abcdef" for c in key) for key in credentials
+        )
     ):
         raise ValueError("Sunucu için SHA-256 kimlik kayıtları gerekli")
     if isinstance(store, PostgresStore):
@@ -62,11 +69,21 @@ def create_app(
         response.headers["Pragma"] = "no-cache"
         return response
 
+    @app.exception_handler(IdentityUnavailable)
     @app.exception_handler(SourcePolicyUnavailable)
-    async def policy_unavailable(_: HTTPRequest, __: SourcePolicyUnavailable) -> JSONResponse:
+    async def policy_unavailable(
+        _: HTTPRequest, __: SourcePolicyUnavailable | IdentityUnavailable
+    ) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
 
     def authenticate(authorization: Annotated[str | None, Header()] = None) -> Scope:
+        if identity is not None:
+            try:
+                return identity.authenticate(authorization)
+            except Unauthenticated as error:
+                raise HTTPException(
+                    401, detail="UNAUTHENTICATED", headers={"WWW-Authenticate": "Bearer"}
+                ) from error
         if authorization is not None and authorization.startswith("Bearer "):
             hashed = token_digest(authorization[7:])
             for expected, scope in principals.items():
@@ -97,7 +114,7 @@ def create_app(
 
     @app.exception_handler(psycopg.Error)
     @app.exception_handler(sqlite3.Error)
-    async def unavailable(_: HTTPRequest, __: sqlite3.Error) -> JSONResponse:
+    async def unavailable(_: HTTPRequest, __: sqlite3.Error | psycopg.Error) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
 
     @app.post("/v1/cases", response_model=Case, status_code=201)
@@ -162,8 +179,21 @@ def create_app(
 
 def from_environment() -> FastAPI:
     """Fail closed: no default identity, token, or source. Configuration stays server-side."""
-    config = json.loads(Path(os.environ["AEGISFLOW_AUTH_FILE"]).read_text())
-    credentials = {key: Scope.model_validate(value) for key, value in config.items()}
+    mode = os.environ.get("AEGISFLOW_AUTH_MODE", "development")
+    identity = None
+    credentials: dict[str, Scope] = {}
+    if mode == "development":
+        config = json.loads(Path(os.environ["AEGISFLOW_AUTH_FILE"]).read_text())
+        credentials = {key: Scope.model_validate(value) for key, value in config.items()}
+    elif mode == "jwt":
+        identity = JWTIdentity(
+            os.environ["AEGISFLOW_JWT_ISSUER"],
+            os.environ["AEGISFLOW_JWT_AUDIENCE"],
+            Path(os.environ["AEGISFLOW_JWKS_FILE"]),
+            Path(os.environ["AEGISFLOW_PRINCIPALS_FILE"]),
+        )
+    else:
+        raise ValueError("Unknown authentication mode")
     source_path = Path(os.environ["AEGISFLOW_SCENARIO_FILE"])
     if source_path.stat().st_size > 1_000_000:
         raise ValueError("Kaynak boyutu sınırı aşıldı")
@@ -177,4 +207,5 @@ def from_environment() -> FastAPI:
         credentials,
         (source,),
         source_access=SourceAccess(Path(os.environ["AEGISFLOW_SOURCE_ACL_FILE"])),
+        identity=identity,
     )

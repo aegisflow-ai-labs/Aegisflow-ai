@@ -120,6 +120,7 @@ def test_api_failure_paths(tmp_path: Path, monkeypatch) -> None:
     import json
 
     auth_file.write_text(json.dumps({token_digest(token): scope.model_dump(mode="json")}))
+    monkeypatch.setenv("AEGISFLOW_AUTH_MODE", "development")
     monkeypatch.setenv("AEGISFLOW_AUTH_FILE", str(auth_file))
     monkeypatch.setenv("AEGISFLOW_SCENARIO_FILE", "fixtures/supply-delay-v1.json")
     policy_file = tmp_path / "policy.json"
