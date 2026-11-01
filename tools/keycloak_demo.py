@@ -292,14 +292,49 @@ def revoke_sessions():
     )
 
 
+def enable_synthetic_actions():
+    """Explicit local operator opt-in; never changes other principals or revocations."""
+    with os.fdopen(
+        os.open(DIRECTORY / "operator.lock", os.O_WRONLY | os.O_CREAT, 0o600), "w"
+    ) as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        account = json.loads((DIRECTORY / "login.json").read_text())
+        file = DIRECTORY / "principals.json"
+        policy = IdentityPolicy.model_validate_json(load_json(file))
+        matches = [p for p in policy.principals if p.external_subject == account["subject"]]
+        if len(matches) != 1 or matches[0].scope.tenant_id != "demo":
+            raise RuntimeError("Expected local demo principal missing")
+        original = matches[0]
+        updated_scope = original.scope.model_copy(
+            update={"permissions": original.scope.permissions | {"approve", "execute"}}
+        )
+        bindings = tuple(
+            p.model_copy(update={"scope": updated_scope}) if p == original else p
+            for p in policy.principals
+        )
+        write_private(
+            file,
+            policy.model_copy(
+                update={"revision": "local-actions-" + uuid4().hex, "principals": bindings}
+            ).model_dump_json(indent=2),
+        )
+    print("Synthetic action approval/execution enabled for the local demo principal.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Local browser login with isolated Keycloak; synthetic use only"
     )
     parser.add_argument(
-        "command", choices=["start", "stop", "revoke-sessions"], nargs="?", default="start"
+        "command",
+        choices=["start", "stop", "revoke-sessions", "enable-synthetic-actions"],
+        nargs="?",
+        default="start",
     )
     args = parser.parse_args()
+    if args.command == "enable-synthetic-actions":
+        enable_synthetic_actions()
+        return
     if args.command == "revoke-sessions":
         revoke_sessions()
         return

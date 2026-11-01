@@ -28,6 +28,7 @@ that have not reached `main` yet.
 - Local Keycloak browser login using Authorization Code + S256 PKCE, opaque sessions and CSRF checks.
 - Exact tenant/subject/source grants, request-time ACL reload and live revocation.
 - Idempotent request handling, concurrent replay protection and transaction rollback.
+- Exact-content action proposal/approval and one atomic synthetic execution receipt, recorded in the immutable audit log.
 - HTTP input limits before JSON parsing: 64 KiB body, 16 KiB aggregate header
   names/values, and a five-second total body-read deadline.
 
@@ -205,7 +206,7 @@ concurrency budgets and production deployment remain separate work.
 Next: bounded task routing with deterministic permissions/tool budgets and baseline
 comparison. Production identity acceptance remains a separate deployment gate.
 Real enterprise connectors, a full operational UI, root-cause inference, cost/risk alternatives,
-exact-payload human approval, external-action idempotency, postcondition verification,
+production approval lifecycle, external-action idempotency and external postcondition verification,
 compensation, sealed audit, backup/recovery drills and the 300-case benchmark remain
 planned. No production acceptance or measured PDF target is claimed.
 
@@ -375,3 +376,35 @@ stored result; it does not create another investigation. The API case index is
 `GET /v1/cases?offset=0`. Each page scans at most 100 tenant cases and filters
 them by current source access; dashboard counts and evidence/audit indexes cover
 that page. See [ADR-013](docs/adr/013-persisted-workspace-navigation.md).
+
+## Controlled synthetic actions
+
+An SLA-breach case can now progress through **Action center**:
+
+1. **Prepare action proposal** constructs a fixed synthetic procurement-review payload.
+2. **Approve this exact action** records the human identity, time and payload SHA-256.
+3. **Execute synthetic action** atomically records one synthetic queue receipt.
+
+The local operator must explicitly enable demo approval/execution permissions:
+
+```sh
+.venv/bin/python tools/keycloak_demo.py enable-synthetic-actions
+```
+
+This updates only the configured local demo principal and preserves other grants
+and revocations. Existing users are not automatically granted approval rights.
+The browser smoke test opts in explicitly for its synthetic test account.
+
+API: `GET /v1/cases/{case_id}/action` reads the current state.
+`POST /v1/cases/{case_id}/action/propose` accepts `{}`.
+The `approve` and `execute` routes accept
+`{"content_digest":"<exact SHA-256 from the proposal>"}`.
+Cookie-authenticated writes also require the existing CSRF header.
+
+Missing/conflicting evidence, unauthorized approvals, mismatched content and
+execution before approval are rejected. Concurrent/repeated execution returns
+the same receipt without a second execution event. Execution is a local
+simulation represented by its committed audit record; no supplier, email service
+or enterprise system is contacted. A local operator may hold all demo permissions;
+production separation of duties, approval expiry, cancellation and external
+connector recovery remain future work. See [ADR-014](docs/adr/014-controlled-synthetic-actions.md).

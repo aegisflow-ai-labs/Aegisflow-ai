@@ -4,6 +4,8 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from .integrity import digest
+
 Identifier = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")]
 
 
@@ -17,7 +19,7 @@ class Scope(Contract):
 
     tenant_id: Identifier
     subject_id: Identifier
-    permissions: frozenset[Literal["investigate", "read"]]
+    permissions: frozenset[Literal["investigate", "read", "approve", "execute"]]
 
 
 class Request(Contract):
@@ -153,14 +155,93 @@ class Case(Contract):
         return self
 
 
+class ActionPayload(Contract):
+    kind: Literal["SYNTHETIC_PROCUREMENT_REVIEW"] = "SYNTHETIC_PROCUREMENT_REVIEW"
+    case_id: Identifier
+    tenant_id: Identifier
+    order_id: Identifier
+    source_checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    destination: Literal["synthetic://procurement-review"] = "synthetic://procurement-review"
+    message: Annotated[str, Field(min_length=1, max_length=500)]
+    evidence_refs: Annotated[tuple[Identifier, ...], Field(min_length=1, max_length=64)]
+    policy_version: Literal["supply-action-v1"] = "supply-action-v1"
+
+
+class Action(Contract):
+    action_id: Identifier
+    case_id: Identifier
+    payload: ActionPayload
+    content_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    status: Literal["PROPOSED", "APPROVED", "EXECUTED"]
+    proposed_by: Identifier
+    approved_by: Identifier | None = None
+    approved_at: AwareDatetime | None = None
+    receipt_id: Identifier | None = None
+    external_action_executed: Literal[False] = False
+
+    @model_validator(mode="after")
+    def approval_integrity(self) -> "Action":
+        if (
+            self.case_id != self.payload.case_id
+            or self.action_id != self.content_digest
+            or digest(self.payload.model_dump(mode="json")) != self.content_digest
+        ):
+            raise ValueError("Action content integrity mismatch")
+        if self.status == "PROPOSED":
+            if (
+                self.approved_by is not None
+                or self.approved_at is not None
+                or self.receipt_id is not None
+            ):
+                raise ValueError("Unapproved action contains approval or execution")
+        elif self.approved_by is None or self.approved_at is None:
+            raise ValueError("Approval record required")
+        if self.status == "EXECUTED":
+            if self.receipt_id != "synthetic:" + self.action_id:
+                raise ValueError("Synthetic receipt mismatch")
+        elif self.receipt_id is not None:
+            raise ValueError("Unexpected execution receipt")
+        return self
+
+
 class AuditEvent(Contract):
     event_id: Identifier
     tenant_id: Identifier
     case_id: Identifier
     trace_id: Identifier
     revision: Annotated[int, Field(gt=0)]
-    event_type: Literal["CaseCreated", "EvidenceCollected", "InvestigationCompleted"]
+    event_type: Literal[
+        "CaseCreated",
+        "EvidenceCollected",
+        "InvestigationCompleted",
+        "ActionProposed",
+        "ActionApproved",
+        "ActionExecuted",
+    ]
     occurred_at: AwareDatetime
-    producer: Literal["deterministic-baseline-v1"] = "deterministic-baseline-v1"
+    producer: Literal["deterministic-baseline-v1", "action-workflow-v1"] = (
+        "deterministic-baseline-v1"
+    )
+    action_record: Action | None = None
     causation_id: Identifier
     payload_refs: tuple[Identifier, ...]
+
+    @model_validator(mode="after")
+    def action_scope(self) -> "AuditEvent":
+        if self.event_type.startswith("Action"):
+            expected = {
+                "ActionProposed": "PROPOSED",
+                "ActionApproved": "APPROVED",
+                "ActionExecuted": "EXECUTED",
+            }
+            if (
+                self.action_record is None
+                or self.action_record.status != expected[self.event_type]
+                or self.producer != "action-workflow-v1"
+                or self.action_record.case_id != self.case_id
+                or self.action_record.payload.tenant_id != self.tenant_id
+            ):
+                raise ValueError("Action event scope mismatch")
+        elif self.action_record is not None:
+            raise ValueError("Unexpected action record")
+        return self

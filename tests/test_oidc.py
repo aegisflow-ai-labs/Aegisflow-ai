@@ -197,6 +197,15 @@ def test_browser_ui_csrf_idempotency_revocation_and_host(flow, tmp_path):
         result = client.post("/demo/investigate", data=data)
         assert result.status_code == 200 and "25200" in result.text
         assert result.url.path.startswith("/cases/")
+        action_url = "/actions/" + result.url.path.rsplit("/", 1)[-1]
+        assert (
+            client.post(
+                action_url,
+                data={"csrf": "wrong", "key": "x", "operation": "propose", "content_digest": ""},
+            ).status_code
+            == 403
+        )
+        assert client.get(action_url).status_code == 200
         assert 'aria-current="page">Investigations' in result.text
         assert client.get("/cases").text.count("browser-1") == 0
         assert client.get("/evidence").status_code == 200

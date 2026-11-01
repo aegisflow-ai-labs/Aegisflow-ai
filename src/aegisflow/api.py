@@ -8,18 +8,29 @@ import sqlite3
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
-from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
+from .actions import ActionConflict
+from .contracts import (
+    Action,
+    AuditEvent,
+    Case,
+    Contract,
+    Evidence,
+    Identifier,
+    Request,
+    Scenario,
+    Scope,
+)
 from .http_limits import RequestLimits
 from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
 from .login_ui import COOKIE, mount_login
@@ -32,6 +43,10 @@ from .triage import Triage, triage
 class CreateCase(Contract):
     order_id: Identifier
     as_of: AwareDatetime
+
+
+class ActionCommand(Contract):
+    content_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None = None
 
 
 def token_digest(token: str) -> str:
@@ -131,6 +146,10 @@ def create_app(
     async def missing(_: HTTPRequest, __: NotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "NOT_FOUND"})
 
+    @app.exception_handler(ActionConflict)
+    async def action_conflict(_: HTTPRequest, error: ActionConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
     @app.exception_handler(IdempotencyConflict)
     async def conflict(_: HTTPRequest, __: IdempotencyConflict) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": "IDEMPOTENCY_CONFLICT"})
@@ -215,6 +234,38 @@ def create_app(
         visible_case(scope, case_id)
         return store.events(scope, case_id)
 
+    def action_read(scope: Scope, case_id: str) -> Action | None:
+        visible_case(scope, case_id)
+        return next(
+            (
+                e.action_record
+                for e in reversed(store.events(scope, case_id))
+                if e.action_record is not None
+            ),
+            None,
+        )
+
+    def action_transition(
+        scope: Scope, case_id: str, operation: str, checksum: str | None
+    ) -> Action:
+        visible_case(scope, case_id)
+        return Action.model_validate(store.transition_action(scope, case_id, operation, checksum))
+
+    @app.get("/v1/cases/{case_id}/action", response_model=Action | None)
+    def action_detail(
+        case_id: str, scope: Annotated[Scope, Depends(authenticate)]
+    ) -> Action | None:
+        return action_read(scope, case_id)
+
+    @app.post("/v1/cases/{case_id}/action/{operation}", response_model=Action)
+    def change_action(
+        case_id: str,
+        operation: Literal["propose", "approve", "execute"],
+        body: ActionCommand,
+        scope: Annotated[Scope, Depends(authenticate)],
+    ) -> Action:
+        return action_transition(scope, case_id, operation, body.content_digest)
+
     @app.get("/v1/cases", response_model=tuple[Case, ...])
     def case_index(
         scope: Annotated[Scope, Depends(authenticate)],
@@ -276,6 +327,8 @@ def create_app(
             visible_cases,
             visible_case,
             visible_events,
+            action_read,
+            action_transition,
         )
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(RequestLimits)

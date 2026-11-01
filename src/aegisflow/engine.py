@@ -1,18 +1,11 @@
 """Pure baseline: elapsed UTC seconds, no inference of root cause."""
 
-import hashlib
-import json
 from datetime import UTC, datetime
 
 from .contracts import Case, Claim, Evidence, Request, Scenario, Task
+from .integrity import digest
 
-
-def canonical(value: object) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-
-
-def digest(value: object) -> str:
-    return hashlib.sha256(canonical(value).encode()).hexdigest()
+__all__ = ["digest", "investigate"]
 
 
 def investigate(

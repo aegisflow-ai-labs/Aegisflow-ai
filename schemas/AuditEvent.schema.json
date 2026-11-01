@@ -1,4 +1,197 @@
 {
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "action_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Action Id",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ActionPayload"
+        },
+        "content_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PROPOSED",
+            "APPROVED",
+            "EXECUTED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "proposed_by": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved By"
+        },
+        "approved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved At"
+        },
+        "receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_.:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Id"
+        },
+        "external_action_executed": {
+          "const": false,
+          "default": false,
+          "title": "External Action Executed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action_id",
+        "case_id",
+        "payload",
+        "content_digest",
+        "status",
+        "proposed_by"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "ActionPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "SYNTHETIC_PROCUREMENT_REVIEW",
+          "default": "SYNTHETIC_PROCUREMENT_REVIEW",
+          "title": "Kind",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "order_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "source_checksum": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Checksum",
+          "type": "string"
+        },
+        "destination": {
+          "const": "synthetic://procurement-review",
+          "default": "synthetic://procurement-review",
+          "title": "Destination",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "policy_version": {
+          "const": "supply-action-v1",
+          "default": "supply-action-v1",
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "tenant_id",
+        "order_id",
+        "source_checksum",
+        "message",
+        "evidence_refs"
+      ],
+      "title": "ActionPayload",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -44,7 +237,10 @@
       "enum": [
         "CaseCreated",
         "EvidenceCollected",
-        "InvestigationCompleted"
+        "InvestigationCompleted",
+        "ActionProposed",
+        "ActionApproved",
+        "ActionExecuted"
       ],
       "title": "Event Type",
       "type": "string"
@@ -55,10 +251,24 @@
       "type": "string"
     },
     "producer": {
-      "const": "deterministic-baseline-v1",
       "default": "deterministic-baseline-v1",
+      "enum": [
+        "deterministic-baseline-v1",
+        "action-workflow-v1"
+      ],
       "title": "Producer",
       "type": "string"
+    },
+    "action_record": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Action"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "causation_id": {
       "maxLength": 128,
