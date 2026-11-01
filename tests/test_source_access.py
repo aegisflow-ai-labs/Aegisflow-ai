@@ -189,6 +189,7 @@ def test_source_policy_schema_and_clean_demo_setup(tmp_path, monkeypatch):
         assert (work / name).stat().st_mode & 0o777 == 0o600
     token = (work / "api-token").read_text()
     assert token not in result.stdout and token not in result.stderr
+    monkeypatch.setenv("AEGISFLOW_AUTH_MODE", "development")
     monkeypatch.setenv("AEGISFLOW_AUTH_FILE", str(work / "api-auth.json"))
     monkeypatch.setenv("AEGISFLOW_SOURCE_ACL_FILE", str(work / "source-acl.json"))
     monkeypatch.setenv(

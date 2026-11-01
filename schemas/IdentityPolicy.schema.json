@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "PrincipalBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "external_subject": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "External Subject",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        }
+      },
+      "required": [
+        "external_subject",
+        "scope"
+      ],
+      "title": "PrincipalBinding",
+      "type": "object"
+    },
+    "Scope": {
+      "additionalProperties": false,
+      "description": "Trusted local caller context; NOT an authentication mechanism.",
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "subject_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "investigate",
+              "read"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "tenant_id",
+        "subject_id",
+        "permissions"
+      ],
+      "title": "Scope",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "revision": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Revision",
+      "type": "string"
+    },
+    "principals": {
+      "items": {
+        "$ref": "#/$defs/PrincipalBinding"
+      },
+      "title": "Principals",
+      "type": "array"
+    },
+    "revoked_jti": {
+      "default": [],
+      "items": {
+        "maxLength": 256,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Revoked Jti",
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "revision",
+    "principals"
+  ],
+  "title": "IdentityPolicy",
+  "type": "object"
+}

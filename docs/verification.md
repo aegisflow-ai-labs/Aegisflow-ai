@@ -127,3 +127,26 @@ enabled, and dependency vulnerability alerts returned HTTP 204 (enabled). At tha
 snapshot open dependency/secret alerts were empty; newly enabled scans may still be
 processing. Main review/status protection remains enabled. This is scoped validation,
 not an independent comprehensive security audit or a production-security guarantee.
+
+## Signed access-token foundation — 2026-11-01
+
+Full local suite against PostgreSQL 18.4: **118 tests passed**, none skipped; Ruff
+lint/format and strict mypy (11 source files) passed. Required claims, exact time
+boundaries, wrong issuer/audience, unsigned/HMAC/tampered tokens, ID-token type,
+untrusted key/URL headers, weak/private/duplicate keys, principal/JTI removal,
+key rotation and malformed/missing configuration were exercised. Server-side scope
+mapping ignores token tenant/admin claims. The JWT HTTP mode was tested with SQLite
+and restricted PostgreSQL/RLS, including replay and subsequent subject revocation.
+Identity and key JSON Schemas are exported and checked for drift.
+
+The one-command disposable demo was run against real localhost Uvicorn/curl:
+successful signed request, identical replay and live subject revocation (401) all
+passed; captured output did not contain the Bearer token. The temporary demo server
+was stopped. Demo files have mode 0600 and no private signing key is persisted.
+
+pip-audit reported no known vulnerabilities for the new PyJWT/cryptography dependency
+set; Gitleaks working-tree scan and diff checks passed. This is a narrow local JWT
+resource-server verifier, not completed OIDC login or production identity acceptance.
+Docker Desktop exists on the workstation but the Docker daemon socket is absent,
+so no live Keycloak realm/login was configured or tested. The current main README
+was confirmed English after PR #6 merged. Current remote checks belong to the new PR.

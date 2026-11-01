@@ -23,6 +23,7 @@ that have not reached `main` yet.
 - Closed Pydantic contracts, versioned JSON Schemas and persisted input dependencies.
 - Atomic case/audit persistence in SQLite or explicitly configured PostgreSQL.
 - Tenant-aware API access, PostgreSQL RLS and restricted runtime-role checks.
+- Optional signed access-token verification with issuer/audience/time checks and local revocation.
 - Exact tenant/subject/source grants, request-time ACL reload and live revocation.
 - Idempotent request handling, concurrent replay protection and transaction rollback.
 - HTTP input limits before JSON parsing: 64 KiB body, 16 KiB aggregate header
@@ -55,8 +56,9 @@ runs; fixed inputs and an explicit investigation time reproduce business results
 
 ## Local HTTP API
 
-Run only on localhost with synthetic data. Authentication uses server-configured
-development Bearer keys; OIDC and production identity management remain planned.
+Run only on localhost with synthetic data. The default demo uses server-configured
+development Bearer keys; optional signed-token verification is described below.
+OIDC login and production identity management remain planned.
 
 For a fresh checkout:
 
@@ -218,3 +220,36 @@ third-party dependencies retain their own terms. The reference PDF is not bundle
 
 Maintainers: [Miraç Keser](https://github.com/mirackeser) and
 [Cansu Kalkan](https://github.com/cansukalkan).
+
+## Try signed access-token verification
+
+For a disposable demo without Docker, an identity account or a password:
+
+```sh
+uv sync --frozen --no-editable --reinstall-package aegisflow-ai
+.venv/bin/python tools/jwt_demo.py
+```
+
+The command starts a localhost API and prints a ready-to-copy `curl` command for a
+second terminal. It uses a fresh private directory under `work/`, a ten-minute signed
+access token, and an in-memory signing key that is never saved. Stop with Ctrl+C;
+run again for a new demo after expiry. Use `--port 8001` if port 8000 is occupied.
+No browser login screen or real identity provider is involved in this demonstration.
+
+For explicit server configuration, set `AEGISFLOW_AUTH_MODE=jwt` and configure:
+
+- `AEGISFLOW_JWT_ISSUER`: exact trusted issuer.
+- `AEGISFLOW_JWT_AUDIENCE`: this API's expected audience.
+- `AEGISFLOW_JWKS_FILE`: trusted public keys matching [PublicKeys.schema.json](schemas/PublicKeys.schema.json).
+- `AEGISFLOW_PRINCIPALS_FILE`: server subject-to-scope mappings and revoked token IDs
+  matching [IdentityPolicy.schema.json](schemas/IdentityPolicy.schema.json).
+
+Retain the existing source ACL, scenario and database configuration. JWT mode does
+not read or fall back to the development AUTH_FILE. Default `development` mode is
+retained for the earlier demo. Configure modes explicitly when deploying a server.
+
+Only RS256 signed `at+jwt` access tokens with required claims and a maximum
+15-minute lifetime are accepted. Keys/subject mappings are reread on subsequent
+requests. A signed tenant/admin claim cannot override server permissions. Revocation
+is local-file based; full OIDC login, provider discovery, PKCE, refresh and logout
+remain planned. See [ADR-007](docs/adr/007-signed-access-verification.md).

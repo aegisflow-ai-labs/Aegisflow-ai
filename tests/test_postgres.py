@@ -349,3 +349,62 @@ def test_source_revocation_cannot_bypass_postgres_replay(runtime_dsn, tmp_path):
             assert client.get(route, headers=headers).status_code == 404
         assert client.post("/v1/cases", json=body, headers=headers).status_code == 404
         assert len(store.events(SCOPE, case["case_id"])) == 3
+
+
+def test_jwt_authentication_and_principal_revocation_with_rls(runtime_dsn, tmp_path):
+    import json
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from aegisflow.identity import IdentityPolicy, JWTIdentity, PrincipalBinding
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public = {
+        **jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key(), as_dict=True),
+        "kid": "pg-key",
+        "use": "sig",
+        "alg": "RS256",
+    }
+    keys = tmp_path / "keys.json"
+    principals = tmp_path / "principals.json"
+    keys.write_text(json.dumps({"keys": [public]}))
+    principals.write_text(
+        IdentityPolicy(
+            revision="pg-1", principals=(PrincipalBinding(external_subject="pg-user", scope=SCOPE),)
+        ).model_dump_json()
+    )
+    now = datetime.now(UTC)
+    identity = JWTIdentity(
+        "https://issuer.example.test", "aegisflow-api", keys, principals, clock=lambda: now
+    )
+    token = jwt.encode(
+        {
+            "iss": identity.issuer,
+            "aud": identity.audience,
+            "sub": "pg-user",
+            "jti": "pg-1",
+            "client_id": "test-client",
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int(now.timestamp()) + 600,
+        },
+        key,
+        algorithm="RS256",
+        headers={"kid": "pg-key", "typ": "at+jwt"},
+    )
+    store = PostgresStore(runtime_dsn)
+    app = create_app(store, {}, (generate(),), source_access=access_for(SCOPE), identity=identity)
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer " + token, "Idempotency-Key": "pg-identity"}
+        body = {"order_id": "PO-001", "as_of": "2026-11-01T18:00:00Z"}
+        response = client.post("/v1/cases", json=body, headers=headers)
+        assert response.status_code == 201
+        case = response.json()
+        assert client.post("/v1/cases", json=body, headers=headers).json() == case
+        principals.write_text(
+            IdentityPolicy(revision="pg-revoked", principals=()).model_dump_json()
+        )
+        assert client.get("/v1/cases/" + case["case_id"], headers=headers).status_code == 401
+        assert client.post("/v1/cases", json=body, headers=headers).status_code == 401
+        assert len(store.events(SCOPE, case["case_id"])) == 3

@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "PublicJWK": {
+      "additionalProperties": false,
+      "properties": {
+        "kty": {
+          "const": "RSA",
+          "title": "Kty",
+          "type": "string"
+        },
+        "use": {
+          "const": "sig",
+          "title": "Use",
+          "type": "string"
+        },
+        "alg": {
+          "const": "RS256",
+          "title": "Alg",
+          "type": "string"
+        },
+        "kid": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Kid",
+          "type": "string"
+        },
+        "n": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "N",
+          "type": "string"
+        },
+        "e": {
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "E",
+          "type": "string"
+        },
+        "key_ops": {
+          "default": [
+            "verify"
+          ],
+          "maxItems": 1,
+          "minItems": 1,
+          "prefixItems": [
+            {
+              "const": "verify",
+              "type": "string"
+            }
+          ],
+          "title": "Key Ops",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kty",
+        "use",
+        "alg",
+        "kid",
+        "n",
+        "e"
+      ],
+      "title": "PublicJWK",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "keys": {
+      "items": {
+        "$ref": "#/$defs/PublicJWK"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Keys",
+      "type": "array"
+    }
+  },
+  "required": [
+    "keys"
+  ],
+  "title": "PublicKeys",
+  "type": "object"
+}
