@@ -408,3 +408,18 @@ def test_jwt_authentication_and_principal_revocation_with_rls(runtime_dsn, tmp_p
         assert client.get("/v1/cases/" + case["case_id"], headers=headers).status_code == 401
         assert client.post("/v1/cases", json=body, headers=headers).status_code == 401
         assert len(store.events(SCOPE, case["case_id"])) == 3
+
+
+def test_case_history_paging_and_tenant_isolation(dsn):
+    migrate(dsn)
+    store = PostgresStore(dsn)
+    cases = [
+        store.run(SCOPE, REQUEST.model_copy(update={"idempotency_key": f"history-{i}"}), generate())
+        for i in range(3)
+    ]
+    listed = PostgresStore(dsn).list_cases(SCOPE)
+    assert {c.case_id for c in listed} == {c.case_id for c in cases}
+    assert store.list_cases(SCOPE, limit=1, offset=1) == listed[1:2]
+    assert store.list_cases(SCOPE.model_copy(update={"tenant_id": "other"})) == ()
+    with pytest.raises(PolicyDenied):
+        store.list_cases(SCOPE.model_copy(update={"permissions": frozenset()}))

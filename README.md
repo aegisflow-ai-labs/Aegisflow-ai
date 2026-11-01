@@ -362,3 +362,16 @@ contacted. Existing case IDs, source snapshots and audit events remain available
 Authorized API clients can read the order catalog at `GET /v1/orders` and the
 recommendation at `GET /v1/cases/{case_id}/triage`.
 See [ADR-011](docs/adr/011-operational-triage.md) for policy and scope.
+
+## Workspace navigation
+
+After local sign-in, the command center shows persisted case activity. Use
+**Investigations** to create a case, filter the history and reopen previous
+results. **Agent map**, **Evidence library**, **Audit trail** and **Access &
+session** have separate routes with a visible active navigation state.
+
+Case creation redirects to a stable case URL. Refreshing that URL reads the
+stored result; it does not create another investigation. The API case index is
+`GET /v1/cases?offset=0`. Each page scans at most 100 tenant cases and filters
+them by current source access; dashboard counts and evidence/audit indexes cover
+that page. See [ADR-013](docs/adr/013-persisted-workspace-navigation.md).

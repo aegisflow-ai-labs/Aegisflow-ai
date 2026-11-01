@@ -285,3 +285,21 @@ def test_role_registry_reports_only_implemented_subset(store: Store) -> None:
     assert [r["role_id"] for r in registry if r["implemented"]] == ["A21"]
     assert [r["role_id"] for r in registry if r["tested"]] == ["A21"]
     assert store.run(SCOPE, request(), generate()).active_roles == ("A21",)
+
+
+def test_paged_case_history_tenant_permission_and_reopen(tmp_path):
+    path = tmp_path / "history.db"
+    store = Store(path, clock=lambda: NOW)
+    created = [
+        store.run(SCOPE, request(idempotency_key=f"history-{i}"), generate()) for i in range(3)
+    ]
+    expected = tuple(sorted(created, key=lambda c: c.case_id, reverse=True))
+    assert Store(path).list_cases(SCOPE) == expected
+    assert store.list_cases(SCOPE, limit=1, offset=1) == expected[1:2]
+    other = SCOPE.model_copy(update={"tenant_id": "other"})
+    assert store.list_cases(other) == ()
+    with pytest.raises(PolicyDenied):
+        store.list_cases(SCOPE.model_copy(update={"permissions": frozenset()}))
+    for limit, offset in ((0, 0), (101, 0), (1, -1), (1, 100001)):
+        with pytest.raises(ValueError):
+            store.list_cases(SCOPE, limit=limit, offset=offset)

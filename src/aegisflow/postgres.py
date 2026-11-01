@@ -185,6 +185,18 @@ class PostgresStore:
                 raise RuntimeError("Persistence verification failed")
             return case
 
+    def list_cases(self, scope: Scope, limit: int = 100, offset: int = 0) -> tuple[Case, ...]:
+        Store.authorize(scope, scope.tenant_id, "read")
+        if not 1 <= limit <= 100 or not 0 <= offset <= 100000:
+            raise ValueError("Invalid case page")
+        with tenant_transaction(self.dsn, scope) as db:
+            rows = db.execute(
+                "SELECT body FROM aegis_cases WHERE tenant_id=%s "
+                "ORDER BY (body::jsonb->>'created_at')::timestamptz DESC, case_id DESC LIMIT %s OFFSET %s",
+                (scope.tenant_id, limit, offset),
+            ).fetchall()
+        return tuple(Case.model_validate_json(str(row[0])) for row in rows)
+
     def read(self, scope: Scope, case_id: str) -> Case:
         Store.authorize(scope, scope.tenant_id, "read")
         with tenant_transaction(self.dsn, scope) as db:

@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from .contracts import Case, Scope
+from .contracts import AuditEvent, Case, Scope
 from .identity import Unauthenticated
 from .oidc import BrowserLogin, LoginCapacity, LoginRejected, Session
 from .store import NotFound, PolicyDenied
@@ -34,12 +34,38 @@ dl{display:grid;grid-template-columns:1fr 2fr;gap:12px 24px}dt{color:var(--muted
 """
 
 
-def page(content: str, status: int = 200) -> HTMLResponse:
+def page(content: str, status: int = 200, active: str = "overview") -> HTMLResponse:
+    navigation = (
+        ("overview", "/", "Command center"),
+        ("cases", "/cases", "Investigations"),
+        ("agents", "/agents", "Agent map"),
+        ("evidence", "/evidence", "Evidence library"),
+        ("activity", "/activity", "Audit trail"),
+        ("access", "/access", "Access & session"),
+    )
+    nav = '<aside class="shell-nav"><span class="brand">AegisFlow</span><span class="nav-group">WORKSPACE</span>'
+    for key, href, label in navigation:
+        current = ' class="selected" aria-current="page"' if active == key else ""
+        nav += f'<a href="{href}"{current}>{label}</a>'
+    nav += '<div class="nav-foot">AegisFlow AI<br>Local · Synthetic data</div></aside>'
+    label = next((label for key, _, label in navigation if key == active), "Workspace")
     return HTMLResponse(
         """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>AegisFlow AI · Local pilot</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>"""
+        + escape(label)
+        + """ · AegisFlow AI</title>
 <link rel="stylesheet" href="/auth/style.css"><script src="/auth/workspace.js" defer></script></head><body><a class="skip" href="#content">Skip to content</a>
-<aside class="shell-nav"><span class="brand">AegisFlow</span><span class="nav-group">OVERVIEW</span><a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Command center</a><span class="nav-group">CONTROL</span><a class="selected" href="/">◎ &nbsp; Agent map</a><a href="/#investigation">↗ &nbsp; Investigations</a><a href="/#session">◇ &nbsp; Access &amp; session</a><div class="nav-foot">AegisFlow AI<br>Development workspace<br><br>Local · Synthetic data</div></aside><main id="content"><header><span class="top-path">Control &nbsp; / &nbsp; <strong>Agent map</strong></span><div class="top-tools"><label class="sr-only" for="workspace-search">Search agents</label><input class="searchbox" id="workspace-search" type="search" placeholder="Search agents, capabilities…"><span class="tag">Local pilot</span></div></header>"""
+"""
+        + nav
+        + """<main id="content"><header><span class="top-path">Control &nbsp; / &nbsp; <strong>"""
+        + escape(label)
+        + """</strong></span><div class="top-tools">"""
+        + (
+            '<label class="sr-only" for="workspace-search">Search agents</label><input class="searchbox" id="workspace-search" type="search" placeholder="Search agents, capabilities…">'
+            if active == "agents"
+            else ""
+        )
+        + """<span class="tag">Local pilot</span></div></header>"""
         + content
         + "<footer>Deterministic investigation · No model calls · No external business actions</footer></main></body></html>",
         status_code=status,
@@ -49,6 +75,63 @@ def page(content: str, status: int = 200) -> HTMLResponse:
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store",
         },
+    )
+
+
+def order_name(case: Case) -> str:
+    order = next((e for e in case.evidence if e.evidence_id.endswith(":order")), None)
+    return str(order.snapshot.get("order_id", "Unknown order")) if order else "Unknown order"
+
+
+def case_table(cases: tuple[Case, ...]) -> str:
+    if not cases:
+        return '<p class="empty">No matching investigations. Choose an order above to start a case.</p>'
+    rows = ""
+    for case in cases:
+        decision = triage(case)
+        values = {c.code: c.value for c in case.claims}
+        rows += (
+            '<tr><td><a href="/cases/'
+            + escape(case.case_id, quote=True)
+            + '">'
+            + escape(order_name(case))
+            + "</a><small>"
+            + escape(case.case_id)
+            + '</small></td><td><span class="status">'
+            + escape(case.status.replace("_", " ").title())
+            + "</span></td><td>"
+            + escape(str(values.get("DELIVERY_DELAY", "Unresolved")))
+            + "</td><td>"
+            + escape(decision.disposition.replace("_", " ").title())
+            + "</td><td>"
+            + escape(case.created_at.isoformat())
+            + "</td></tr>"
+        )
+    return (
+        '<div class="table-scroll"><table><thead><tr><th>Order / case</th><th>Status</th><th>Delay (seconds)</th><th>Next step</th><th>Created at</th></tr></thead><tbody>'
+        + rows
+        + "</tbody></table></div>"
+    )
+
+
+def dashboard(cases: tuple[Case, ...]) -> str:
+    decisions = [triage(case) for case in cases]
+    escalate = sum(d.disposition == "ESCALATE" for d in decisions)
+    gaps = sum(d.disposition == "COLLECT_EVIDENCE" for d in decisions)
+    return (
+        '<div class="metrics"><article class="metric"><small>VISIBLE INVESTIGATIONS</small><strong>'
+        + str(len(cases))
+        + "</strong><small>Latest authorized case page</small></article>"
+        + '<article class="metric"><small>ESCALATION RECOMMENDED</small><strong>'
+        + str(escalate)
+        + "</strong><small>Cases exceeding supplier terms</small></article>"
+        + '<article class="metric"><small>EVIDENCE GAPS</small><strong>'
+        + str(gaps)
+        + "</strong><small>Cases requiring more information</small></article></div>"
+        + '<div class="quick-links"><a class="button" href="/cases">New investigation ↗</a><a href="/evidence">Browse evidence</a><a href="/activity">Review audit trail</a></div>'
+        + '<section class="card"><h2>Recent investigations</h2>'
+        + case_table(cases[:10])
+        + '</section><div class="workbench"><section class="card"><h2>How to use this workspace</h2><ol><li>Choose a synthetic purchase order in Investigations.</li><li>Run the evidence and SLA checks.</li><li>Review the recommendation and its source records.</li><li>Reopen the case from history and trace its audit events.</li></ol></section><section class="card"><h2>Current capability</h2><p>A21 · Supplier SLA analysis</p><p class="lead">Five synthetic scenarios exercise late delivery, on-time delivery, missing SLA, conflicting records and an outstanding delivery.</p><a href="/agents">Explore the agent map ↗</a></section></div>'
     )
 
 
@@ -145,11 +228,53 @@ def csrf_form(
     )
 
 
+def report(case: Case) -> HTMLResponse:
+    decision = triage(case)
+    recommendation = (
+        '<section class="card decision"><span class="eyebrow">RECOMMENDED NEXT STEP</span><h2>'
+        + escape(decision.disposition.replace("_", " ").title())
+        + "</h2><p>"
+        + escape(decision.next_step)
+        + "</p><p>"
+        + escape(decision.rationale)
+        + "</p><ul>"
+        + "".join("<li>" + escape(item) + "</li>" for item in decision.missing_evidence)
+        + "</ul><details><summary>Decision evidence and policy</summary><pre>"
+        + escape(decision.model_dump_json(indent=2))
+        + "</pre></details><p>Recommendation only. No supplier has been contacted.</p></section>"
+    )
+    values = {claim.code: claim.value for claim in case.claims}
+    details = "".join(
+        f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
+        for label, value in (
+            ("Status", case.status),
+            ("Case ID", case.case_id),
+            ("Delay (seconds)", values.get("DELIVERY_DELAY", "Unknown")),
+            ("SLA breach", values.get("SLA_BREACH", "Unknown")),
+            ("Evidence snapshots", len(case.evidence)),
+        )
+    )
+    return page(
+        '<section class="hero" id="investigation"><h1>Investigation complete.</h1><p class="lead">Evidence-backed supplier investigation</p></section>'
+        + recommendation
+        + case_workbench(case)
+        + '<section class="card"><h2>Findings</h2><dl>'
+        + details
+        + "</dl><details><summary>View source-linked report</summary><pre>"
+        + escape(case.model_dump_json(indent=2))
+        + '</pre></details></section><a href="/cases">Back to investigations</a>',
+        active="cases",
+    )
+
+
 def mount_login(
     app: FastAPI,
     flow: BrowserLogin,
     investigate: Callable[[Scope, str, str], Case],
     available_orders: Callable[[Scope], tuple[str, ...]],
+    list_cases: Callable[[Scope, int], tuple[Case, ...]],
+    read_case: Callable[[Scope, str], Case],
+    read_events: Callable[[Scope, str], tuple[AuditEvent, ...]],
 ) -> None:
     def current(request: Request) -> tuple[Scope, Session]:
         try:
@@ -195,23 +320,153 @@ def mount_login(
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         try:
-            scope, session = flow.user(request.cookies.get(COOKIE))
+            scope, _ = flow.user(request.cookies.get(COOKIE))
         except Unauthenticated:
             response = page(
-                agent_map()
-                + '<section class="hero" id="investigation"><h1>Investigate with evidence.</h1><p class="lead">Sign in to explore a synthetic supplier delivery delay, its source evidence and deterministic SLA result.</p></section><section class="card"><h2>Start your local session</h2><p>Your password is entered only on the local Keycloak page.</p><a class="button" href="/auth/login">Sign in with Keycloak</a></section>'
+                '<section class="hero" id="investigation"><h1>Investigate with evidence.</h1><p class="lead">Sign in to explore a synthetic supplier delivery delay, its source evidence and deterministic SLA result.</p></section><section class="card"><h2>Start your local session</h2><p>Your password is entered only on the local Keycloak page.</p><a class="button" href="/auth/login">Sign in with Keycloak</a></section>'
             )
             response.delete_cookie(COOKIE, path="/")
             return response
+        cases = list_cases(scope, 0)
         return page(
-            agent_map()
-            + f'<section class="hero" id="investigation"><h1>Ready to investigate.</h1><p class="lead">Signed in as {escape(scope.subject_id)}. Choose an authorized synthetic purchase order to investigate.</p></section><section class="card"><h2>Supplier delivery delay</h2><p>Read the order, delivery, stock, SLA and procedure evidence. Every finding links to a source snapshot.</p>'
+            '<section class="hero"><span class="eyebrow">OPERATIONS WORKSPACE</span><h1>Ready to investigate.</h1><p class="lead">Track supplier exceptions, review evidence and decide what needs attention.</p></section>'
+            + dashboard(cases)
+        )
+
+    @app.get("/agents", response_class=HTMLResponse)
+    def agents() -> HTMLResponse:
+        return page(agent_map(), active="agents")
+
+    @app.get("/cases", response_class=HTMLResponse)
+    def case_list(request: Request, q: str = "", status: str = "", offset: int = 0) -> HTMLResponse:
+        scope, session = current(request)
+        if not 0 <= offset <= 100000 or status not in ("", "COMPLETED", "NEEDS_EVIDENCE"):
+            raise HTTPException(422, detail="INVALID_PAGE")
+        cases = list_cases(scope, offset)
+        filtered = tuple(
+            c
+            for c in cases
+            if (not status or c.status == status)
+            and q.lower() in (c.case_id + order_name(c)).lower()
+        )
+        options = "".join(
+            '<option value="'
+            + value
+            + '"'
+            + (" selected" if value == status else "")
+            + ">"
+            + label
+            + "</option>"
+            for value, label in (
+                ("", "All statuses"),
+                ("COMPLETED", "Completed"),
+                ("NEEDS_EVIDENCE", "Needs evidence"),
+            )
+        )
+        return page(
+            '<section class="hero"><h1>Investigations</h1><p class="lead">Create a case, review a result, or return to a previous investigation.</p></section>'
+            + '<section class="card launch-panel" id="investigation"><h2>New investigation</h2>'
             + csrf_form(
                 session.csrf, "/demo/investigate", "Investigate demo case", available_orders(scope)
             )
-            + '</section><section class="card" id="session"><h2>Session</h2><p>Sign out here, then confirm on Keycloak to end its login session too.</p>'
-            + csrf_form(session.csrf, "/auth/logout", "Sign out")
+            + '</section><section class="card"><h2>Case history</h2>'
+            + '<form method="get" class="filters"><label>Find a case<input name="q" placeholder="Order or case ID" value="'
+            + escape(q, quote=True)
+            + '"></label>'
+            + '<div><label for="case-status">Status</label><select id="case-status" name="status">'
+            + options
+            + "</select></div><button>Filter cases</button></form>"
+            + case_table(filtered)
             + "</section>"
+            + f'<p class="lead">Page {offset // 100 + 1} · Up to 100 stored cases per page, filtered by your source access.</p>'
+            + (
+                f'<a class="button" href="/cases?{escape(urlencode({"offset": max(0, offset - 100), "q": q, "status": status}), quote=True)}">Previous page</a> '
+                if offset
+                else ""
+            )
+            + f'<a class="button" href="/cases?{escape(urlencode({"offset": min(100000, offset + 100), "q": q, "status": status}), quote=True)}">Next page</a>',
+            active="cases",
+        )
+
+    @app.get("/cases/{case_id}", response_class=HTMLResponse)
+    def case_detail(case_id: str, request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        case = read_case(scope, case_id)
+        return report(case)
+
+    @app.get("/evidence", response_class=HTMLResponse)
+    def evidence_library(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        rows = "".join(
+            '<tr><td><a href="/cases/'
+            + escape(c.case_id, quote=True)
+            + "#"
+            + escape(e.evidence_id, quote=True)
+            + '">'
+            + escape(order_name(c))
+            + "</a></td><td>"
+            + escape(e.source_uri)
+            + "</td><td>"
+            + escape(e.source_version)
+            + "</td><td><code>"
+            + escape(e.checksum[:16])
+            + "…</code></td></tr>"
+            for c in cases
+            for e in c.evidence
+        )
+        return page(
+            '<section class="hero"><h1>Evidence library</h1><p class="lead">Captured records from your latest authorized case page. Open a case to inspect the full snapshot.</p></section>'
+            + '<section class="card table-scroll"><table><thead><tr><th>Order / case</th><th>Source</th><th>Version</th><th>SHA-256 preview</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="evidence",
+        )
+
+    @app.get("/activity", response_class=HTMLResponse)
+    def activity(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        events = sorted(
+            (e for c in cases for e in read_events(scope, c.case_id)),
+            key=lambda e: (e.occurred_at, e.revision),
+            reverse=True,
+        )
+        rows = "".join(
+            "<tr><td>"
+            + escape(e.occurred_at.isoformat())
+            + "</td><td>"
+            + escape(e.event_type)
+            + '</td><td><a href="/cases/'
+            + escape(e.case_id, quote=True)
+            + '">'
+            + escape(e.case_id)
+            + "</a></td><td>"
+            + str(e.revision)
+            + "</td></tr>"
+            for e in events
+        )
+        return page(
+            '<section class="hero"><h1>Audit trail</h1><p class="lead">Persisted investigation events from your latest authorized case page.</p></section><section class="card table-scroll"><table><thead><tr><th>Occurred at</th><th>Event</th><th>Case</th><th>Revision</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="activity",
+        )
+
+    @app.get("/access", response_class=HTMLResponse)
+    def access_page(request: Request) -> HTMLResponse:
+        scope, session = current(request)
+        return page(
+            '<section class="hero"><h1>Access &amp; session</h1></section><section class="card"><h2>Current identity</h2><p>Subject: '
+            + escape(scope.subject_id)
+            + "</p><p>Tenant: "
+            + escape(scope.tenant_id)
+            + "</p><p>Permissions: "
+            + escape(", ".join(sorted(scope.permissions)))
+            + "</p>"
+            + csrf_form(session.csrf, "/auth/logout", "Sign out")
+            + "</section>",
+            active="access",
         )
 
     @app.get("/auth/login")
@@ -255,7 +510,7 @@ def mount_login(
         return response
 
     @app.post("/demo/investigate", response_class=HTMLResponse)
-    async def run_demo(request: Request) -> HTMLResponse:
+    async def run_demo(request: Request) -> Response:
         data = form(request, await request.body())
         scope, session = await run_in_threadpool(current, request)
         if not secrets.compare_digest(session.csrf.encode(), data["csrf"].encode()):
@@ -269,42 +524,7 @@ def mount_login(
                 '<h1>Scenario access denied.</h1><p>This account does not have the required source permissions.</p><a href="/">Return to the pilot</a>',
                 403,
             )
-        decision = triage(case)
-        recommendation = (
-            '<section class="card decision"><span class="eyebrow">RECOMMENDED NEXT STEP</span><h2>'
-            + escape(decision.disposition.replace("_", " ").title())
-            + "</h2><p>"
-            + escape(decision.next_step)
-            + "</p><p>"
-            + escape(decision.rationale)
-            + "</p><ul>"
-            + "".join("<li>" + escape(item) + "</li>" for item in decision.missing_evidence)
-            + "</ul><details><summary>Decision evidence and policy</summary><pre>"
-            + escape(decision.model_dump_json(indent=2))
-            + "</pre></details><p>Recommendation only. No supplier has been contacted.</p></section>"
-        )
-        values = {claim.code: claim.value for claim in case.claims}
-        details = "".join(
-            f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
-            for label, value in (
-                ("Status", case.status),
-                ("Case ID", case.case_id),
-                ("Delay (seconds)", values.get("DELIVERY_DELAY", "Unknown")),
-                ("SLA breach", values.get("SLA_BREACH", "Unknown")),
-                ("Evidence snapshots", len(case.evidence)),
-            )
-        )
-        return page(
-            agent_map(case)
-            + '<section class="hero" id="investigation"><h1>Investigation complete.</h1><p class="lead">Evidence-backed supplier investigation</p></section>'
-            + recommendation
-            + case_workbench(case)
-            + '<section class="card"><h2>Findings</h2><dl>'
-            + details
-            + "</dl><details><summary>View source-linked report</summary><pre>"
-            + escape(case.model_dump_json(indent=2))
-            + '</pre></details></section><a href="/">Back to the pilot</a>'
-        )
+        return RedirectResponse("/cases/" + case.case_id, status_code=303)
 
     @app.post("/auth/logout")
     async def logout(request: Request) -> HTMLResponse:

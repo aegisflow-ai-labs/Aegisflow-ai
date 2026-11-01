@@ -23,6 +23,7 @@ def main():
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto("http://127.0.0.1:8000/")
         expect(page.get_by_role("heading", name="Investigate with evidence.")).to_be_visible()
+        page.goto("http://127.0.0.1:8000/agents")
         page.get_by_role("button", name="List", exact=True).click()
         expect(page.locator(".topology")).to_have_class("topology list-mode")
         page.get_by_role("button", name="Map", exact=True).click()
@@ -50,6 +51,7 @@ def main():
         cookie = next(c for c in cookies if c["name"] == "aegisflow_session")
         assert cookie["httpOnly"] and cookie["sameSite"] == "Lax"
         assert "access_token" not in page.content() and account["password"] not in page.content()
+        page.goto("http://127.0.0.1:8000/cases")
         page.get_by_role("button", name="Investigate demo case").click()
         expect(page.get_by_role("heading", name="Investigation complete.")).to_be_visible()
         expect(page.locator("dl")).to_contain_text("25200")
@@ -70,11 +72,39 @@ def main():
             ("PO-004", "Collect Evidence"),
             ("PO-005", "Escalate"),
         ):
-            page.goto("http://127.0.0.1:8000/")
+            page.goto("http://127.0.0.1:8000/cases")
             page.get_by_label("Purchase order").select_option(order)
             page.get_by_role("button", name="Investigate demo case").click()
             expect(page.get_by_role("heading", name=expected, exact=True)).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        for path, active in (
+            ("/", "Command center"),
+            ("/cases", "Investigations"),
+            ("/agents", "Agent map"),
+            ("/evidence", "Evidence library"),
+            ("/activity", "Audit trail"),
+            ("/access", "Access & session"),
+        ):
+            page.goto("http://127.0.0.1:8000" + path)
+            expect(page.locator('[aria-current="page"]')).to_have_count(1)
+            expect(page.locator('[aria-current="page"]')).to_have_text(active)
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        page.goto("http://127.0.0.1:8000/cases")
+        page.get_by_role("textbox", name="Find a case").fill("PO-003")
+        page.get_by_label("Status", exact=True).select_option("NEEDS_EVIDENCE")
+        page.get_by_role("button", name="Filter cases").click()
+        expect(page.get_by_label("Status", exact=True)).to_have_value("NEEDS_EVIDENCE")
+        expect(page.locator("tbody tr").first).to_contain_text("PO-003")
+        assert all(
+            "Needs Evidence" in text for text in page.locator("tbody tr").all_text_contents()
+        )
+        page.goto("http://127.0.0.1:8000/cases/" + case_id)
+        expect(page.locator("dl")).to_contain_text(case_id)
+        page.goto("http://127.0.0.1:8000/")
+        page.set_viewport_size({"width": 1440, "height": 1024})
+        page.screenshot(path=str(output / "overview.png"), full_page=True)
+        page.goto("http://127.0.0.1:8000/cases")
+        page.screenshot(path=str(output / "investigations.png"), full_page=True)
         old_cookie = cookie["value"]
         subprocess.run(
             [sys.executable, "tools/keycloak_demo.py", "revoke-sessions"],
@@ -105,6 +135,7 @@ def main():
         )
         assert replay.status == 401
 
+        page.goto("http://127.0.0.1:8000/access")
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("heading", name="Application session ended.")).to_be_visible()
         page.get_by_role("link", name="Finish signing out of Keycloak").click()

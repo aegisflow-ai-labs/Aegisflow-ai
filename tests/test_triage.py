@@ -100,6 +100,7 @@ def test_catalog_and_triage_authorization_and_replay(tmp_path):
         policy_file.write_text(SourcePolicy(revision="revoked", grants=()).model_dump_json())
         assert client.get("/v1/orders", headers=headers).json() == []
         assert client.get(path, headers=headers).status_code == 404
+        assert client.get("/v1/cases", headers=headers).json() == []
 
 
 def test_suite_reproducible():

@@ -128,6 +128,18 @@ class Store:
                 raise RuntimeError("Kayıt doğrulaması başarısız")
             return case
 
+    def list_cases(self, scope: Scope, limit: int = 100, offset: int = 0) -> tuple[Case, ...]:
+        self.authorize(scope, scope.tenant_id, "read")
+        if not 1 <= limit <= 100 or not 0 <= offset <= 100000:
+            raise ValueError("Invalid case page")
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT body FROM cases WHERE tenant_id=? "
+                "ORDER BY julianday(json_extract(body, '$.created_at')) DESC, case_id DESC LIMIT ? OFFSET ?",
+                (scope.tenant_id, limit, offset),
+            ).fetchall()
+        return tuple(Case.model_validate_json(row[0]) for row in rows)
+
     def read(self, scope: Scope, case_id: str) -> Case:
         self.authorize(scope, scope.tenant_id, "read")
         with closing(self.connect()) as db:

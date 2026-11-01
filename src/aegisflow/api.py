@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 import psycopg
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -195,6 +195,33 @@ def create_app(
         policy.authorize(scope, case.input_source_uris)
         return triage(case)
 
+    def visible_cases(scope: Scope, offset: int = 0) -> tuple[Case, ...]:
+        policy = source_access.load()
+        visible = []
+        for case in store.list_cases(scope, offset=offset):
+            try:
+                policy.authorize(scope, case.input_source_uris)
+            except NotFound:
+                continue
+            visible.append(case)
+        return tuple(visible)
+
+    def visible_case(scope: Scope, case_id: str) -> Case:
+        case = store.read(scope, case_id)
+        source_access.load().authorize(scope, case.input_source_uris)
+        return case
+
+    def visible_events(scope: Scope, case_id: str) -> tuple[AuditEvent, ...]:
+        visible_case(scope, case_id)
+        return store.events(scope, case_id)
+
+    @app.get("/v1/cases", response_model=tuple[Case, ...])
+    def case_index(
+        scope: Annotated[Scope, Depends(authenticate)],
+        offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    ) -> tuple[Case, ...]:
+        return visible_cases(scope, offset)
+
     @app.get("/v1/cases/{case_id}", response_model=Case)
     def read(
         case_id: str,
@@ -241,7 +268,15 @@ def create_app(
                 source_access.load(),
             )
 
-        mount_login(app, browser_login, run_browser_case, available_orders)
+        mount_login(
+            app,
+            browser_login,
+            run_browser_case,
+            available_orders,
+            visible_cases,
+            visible_case,
+            visible_events,
+        )
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(RequestLimits)
     return app

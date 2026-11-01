@@ -172,6 +172,8 @@ def test_browser_ui_csrf_idempotency_revocation_and_host(flow, tmp_path):
     with TestClient(app, base_url="http://127.0.0.1:8000") as client:
         assert client.get("/", headers={"Host": "evil.invalid"}).status_code == 400
         assert client.get("/").status_code == 200
+        for path in ("/cases", "/evidence", "/activity", "/access"):
+            assert client.get(path).status_code == 401
         assert client.get("/auth/callback?code=x&state=x&iss=x").status_code == 400
         sid = session(flow)
         client.cookies.set(COOKIE, sid)
@@ -194,6 +196,11 @@ def test_browser_ui_csrf_idempotency_revocation_and_host(flow, tmp_path):
         )
         result = client.post("/demo/investigate", data=data)
         assert result.status_code == 200 and "25200" in result.text
+        assert result.url.path.startswith("/cases/")
+        assert 'aria-current="page">Investigations' in result.text
+        assert client.get("/cases").text.count("browser-1") == 0
+        assert client.get("/evidence").status_code == 200
+        assert "InvestigationCompleted" in client.get("/activity").text
         assert client.post("/demo/investigate", data=data).text == result.text
         body = {"order_id": "PO-001", "as_of": "2026-11-01T18:00:00Z"}
         assert (
@@ -207,6 +214,11 @@ def test_browser_ui_csrf_idempotency_revocation_and_host(flow, tmp_path):
         policy_file.write_text(json.dumps({"revision": "revoked", "grants": []}))
         assert client.post("/demo/investigate", data=data).status_code == 403
         assert client.get("/v1/cases/" + api.json()["case_id"]).status_code == 404
+        assert client.get("/cases/" + api.json()["case_id"]).status_code == 404
+        for path in ("/cases", "/evidence", "/activity"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert api.json()["case_id"] not in response.text
         flow.identity.principals_file.write_text(
             IdentityPolicy(revision="revoked", principals=()).model_dump_json()
         )
