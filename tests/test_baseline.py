@@ -285,3 +285,19 @@ def test_role_registry_reports_only_implemented_subset(store: Store) -> None:
     assert [r["role_id"] for r in registry if r["implemented"]] == ["A21"]
     assert [r["role_id"] for r in registry if r["tested"]] == ["A21"]
     assert store.run(SCOPE, request(), generate()).active_roles == ("A21",)
+
+
+def test_evidence_workspace_escapes_source_content(store: Store) -> None:
+    from aegisflow.login_ui import evidence_map
+
+    case = store.run(SCOPE, request(), generate())
+    unsafe = '<script>alert("source")</script>'
+    evidence = case.evidence[0].model_copy(
+        update={"source_uri": "synthetic://test/" + unsafe, "snapshot": {"text": unsafe}}
+    )
+    rendered = evidence_map(case.model_copy(update={"evidence": (evidence,)}))
+    assert unsafe not in rendered
+    assert "&lt;script&gt;" in rendered
+    assert "<strong>1</strong><span>Evidence snapshots" in rendered
+    assert "<strong>0</strong><span>Model calls" in rendered
+    assert rendered.count('<details class="source">') == 1
