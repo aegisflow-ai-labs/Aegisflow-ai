@@ -115,3 +115,23 @@ def test_triage_schema():
     from aegisflow.triage import Triage
 
     assert json.loads(Path("schemas/Triage.schema.json").read_text()) == Triage.model_json_schema()
+
+
+def test_workspace_untrusted_evidence_and_capability_boundaries(tmp_path):
+    from aegisflow.workspace import ROLES, agent_map
+
+    scenario = pilot_scenarios()[0]
+    case = Store(tmp_path / "workspace.db").run(
+        SCOPE,
+        Request(tenant_id="demo", order_id="PO-001", idempotency_key="view", as_of=NOW),
+        scenario,
+    )
+    unsafe = "<script>alert('source')</script>"
+    evidence = case.evidence[0].model_copy(update={"snapshot": {"text": unsafe}})
+    rendered = agent_map(case.model_copy(update={"evidence": (evidence,)}))
+    assert unsafe not in rendered
+    assert "&lt;script&gt;" in rendered
+    assert rendered.count('class="agent-node') == 5
+    assert sum(available for _, _, _, available in ROLES) == 1
+    assert "Planned capability" in rendered
+    assert "Activated in this case" in rendered

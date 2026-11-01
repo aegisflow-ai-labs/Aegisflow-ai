@@ -355,7 +355,8 @@ clicking **Investigate demo case**:
 - PO-004: conflicting deliveries → collect evidence.
 - PO-005: no delivery recorded, 9 hours overdue → escalation recommendation.
 
-The scenario clock is fixed at **2026-11-01 18:00 UTC**. The result explains the
+The scenario clock is fixed at **2026-11-01 18:00 UTC**. The case workbench presents delay in hours, SLA status, source-linked findings,
+a timeline and expandable evidence snapshots. The result explains the
 next step and exposes its evidence references and policy version. No supplier is
 contacted. Existing case IDs, source snapshots and audit events remain available.
 Authorized API clients can read the order catalog at `GET /v1/orders` and the
