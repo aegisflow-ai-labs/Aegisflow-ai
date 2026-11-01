@@ -12,6 +12,11 @@ from playwright.sync_api import expect, sync_playwright
 
 
 def main():
+    subprocess.run(
+        [sys.executable, "tools/keycloak_demo.py", "enable-synthetic-actions"],
+        check=True,
+        capture_output=True,
+    )
     account = json.loads(Path("work/keycloak-local/login.json").read_text())
     output = Path("work/browser-check")
     output.mkdir(parents=True, exist_ok=True)
@@ -41,11 +46,13 @@ def main():
         page.goto("http://127.0.0.1:8000/")
         page.keyboard.press("Tab")
         expect(page.get_by_role("link", name="Skip to content")).to_be_focused()
-        page.get_by_role("link", name="Sign in with Keycloak").click()
+        page.goto("http://127.0.0.1:8000/actions")
         page.locator("#username").fill(account["username"])
         page.locator("#password").fill(account["password"])
         page.locator("#kc-login").click()
-        page.wait_for_url("http://127.0.0.1:8000/")
+        page.wait_for_url("http://127.0.0.1:8000/actions")
+        expect(page.get_by_role("heading", name="Action center", exact=True)).to_be_visible()
+        page.goto("http://127.0.0.1:8000/")
         expect(page.get_by_role("heading", name="Ready to investigate.")).to_be_visible()
         cookies = page.context.cookies("http://127.0.0.1:8000/")
         cookie = next(c for c in cookies if c["name"] == "aegisflow_session")
@@ -98,6 +105,15 @@ def main():
         assert all(
             "Needs Evidence" in text for text in page.locator("tbody tr").all_text_contents()
         )
+        page.goto("http://127.0.0.1:8000/actions/" + case_id)
+        page.get_by_role("button", name="Prepare action proposal").click()
+        expect(page.get_by_role("heading", name="PROPOSED", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Approve this exact action").click()
+        expect(page.get_by_role("heading", name="APPROVED", exact=True)).to_be_visible()
+        page.get_by_role("button", name="Execute synthetic action").click()
+        expect(page.get_by_role("heading", name="EXECUTED", exact=True)).to_be_visible()
+        expect(page.locator("main")).to_contain_text("synthetic:")
+        page.screenshot(path=str(output / "action-executed.png"), full_page=True)
         page.goto("http://127.0.0.1:8000/cases/" + case_id)
         expect(page.locator("dl")).to_contain_text(case_id)
         page.goto("http://127.0.0.1:8000/")

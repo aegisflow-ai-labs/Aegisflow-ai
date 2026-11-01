@@ -60,7 +60,9 @@
           "items": {
             "enum": [
               "investigate",
-              "read"
+              "read",
+              "approve",
+              "execute"
             ],
             "type": "string"
           },

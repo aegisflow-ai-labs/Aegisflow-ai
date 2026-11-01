@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import secrets
 import threading
 import time
@@ -163,6 +164,7 @@ class Pending:
     verifier: str
     nonce: str
     expiry: float
+    return_to: str = "/"
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,15 @@ class Session:
     access: str
     csrf: str
     expiry: float
+    return_to: str = "/"
+
+
+def safe_return_path(value: str) -> str:
+    if value in ("/", "/cases", "/agents", "/evidence", "/activity", "/actions", "/access"):
+        return value
+    if re.fullmatch(r"/(?:cases|actions)/[A-Za-z0-9_.:-]{1,128}", value):
+        return value
+    return "/"
 
 
 def hashed(value: str) -> str:
@@ -195,14 +206,18 @@ class BrowserLogin:
         self.pending = {k: v for k, v in self.pending.items() if v.expiry > now}
         self.sessions = {k: v for k, v in self.sessions.items() if v.expiry > now}
 
-    def begin(self) -> tuple[str, str]:
+    def begin(self, return_to: str = "/") -> tuple[str, str]:
         state, binding, verifier, nonce = (secrets.token_urlsafe(32) for _ in range(4))
         with self.lock:
             self._prune()
             if len(self.pending) >= self.capacity:
                 raise LoginCapacity()
             self.pending[hashed(state)] = Pending(
-                hashed(binding), verifier, nonce, self.identity.clock().timestamp() + 300
+                hashed(binding),
+                verifier,
+                nonce,
+                self.identity.clock().timestamp() + 300,
+                safe_return_path(return_to),
             )
         challenge = (
             urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
@@ -252,7 +267,9 @@ class BrowserLogin:
             self._prune()
             if len(self.sessions) >= self.capacity:
                 raise LoginCapacity()
-            self.sessions[hashed(sid)] = Session(access, secrets.token_urlsafe(32), expiry)
+            self.sessions[hashed(sid)] = Session(
+                access, secrets.token_urlsafe(32), expiry, pending.return_to
+            )
         return sid
 
     def user(self, sid: str | None) -> tuple[Scope, Session]:

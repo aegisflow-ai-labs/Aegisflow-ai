@@ -128,6 +128,55 @@ class Store:
                 raise RuntimeError("Kayıt doğrulaması başarısız")
             return case
 
+    def transition_action(
+        self, scope: Scope, case_id: str, operation: str, expected_digest: str | None = None
+    ) -> dict[str, object]:
+        from .actions import transition
+
+        self.authorize(scope, scope.tenant_id, "read")
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT body FROM cases WHERE tenant_id=? AND case_id=?", (scope.tenant_id, case_id)
+            ).fetchone()
+            if row is None:
+                raise NotFound("NOT_FOUND")
+            case = Case.model_validate_json(row[0])
+            rows = db.execute(
+                "SELECT body FROM events WHERE case_id=? ORDER BY revision", (case_id,)
+            ).fetchall()
+            events = tuple(AuditEvent.model_validate_json(row[0]) for row in rows)
+            now = self.clock()
+            action, kind = transition(case, events, scope, operation, expected_digest, now)
+            if kind is None:
+                return action.model_dump(mode="json")
+            event = AuditEvent.model_validate(
+                {
+                    "event_id": str(uuid4()),
+                    "tenant_id": case.tenant_id,
+                    "case_id": case_id,
+                    "trace_id": case.trace_id,
+                    "revision": len(events) + 1,
+                    "event_type": kind,
+                    "occurred_at": now,
+                    "producer": "action-workflow-v1",
+                    "actor_id": scope.subject_id,
+                    "causation_id": action.action_id,
+                    "payload_refs": (action.action_id,),
+                    "action_record": action.model_dump(mode="json"),
+                }
+            )
+            db.execute(
+                "INSERT INTO events VALUES (?, ?, ?, ?)",
+                (event.event_id, case_id, event.revision, event.model_dump_json()),
+            )
+            stored = db.execute(
+                "SELECT body FROM events WHERE event_id=?", (event.event_id,)
+            ).fetchone()
+            if stored is None or AuditEvent.model_validate_json(stored[0]) != event:
+                raise RuntimeError("Action persistence verification failed")
+            return action.model_dump(mode="json")
+
     def list_cases(self, scope: Scope, limit: int = 100, offset: int = 0) -> tuple[Case, ...]:
         self.authorize(scope, scope.tenant_id, "read")
         if not 1 <= limit <= 100 or not 0 <= offset <= 100000:

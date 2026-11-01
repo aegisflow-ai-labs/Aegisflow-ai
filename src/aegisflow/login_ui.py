@@ -6,10 +6,11 @@ from html import escape
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from .contracts import AuditEvent, Case, Scope
+from .contracts import Action, AuditEvent, Case, Scope
 from .identity import Unauthenticated
 from .oidc import BrowserLogin, LoginCapacity, LoginRejected, Session
 from .store import NotFound, PolicyDenied
@@ -41,6 +42,7 @@ def page(content: str, status: int = 200, active: str = "overview") -> HTMLRespo
         ("agents", "/agents", "Agent map"),
         ("evidence", "/evidence", "Evidence library"),
         ("activity", "/activity", "Audit trail"),
+        ("actions", "/actions", "Action center"),
         ("access", "/access", "Access & session"),
     )
     nav = '<aside class="shell-nav"><span class="brand">AegisFlow</span><span class="nav-group">WORKSPACE</span>'
@@ -228,7 +230,7 @@ def csrf_form(
     )
 
 
-def report(case: Case) -> HTMLResponse:
+def report(case: Case, extra: str = "") -> HTMLResponse:
     decision = triage(case)
     recommendation = (
         '<section class="card decision"><span class="eyebrow">RECOMMENDED NEXT STEP</span><h2>'
@@ -262,7 +264,8 @@ def report(case: Case) -> HTMLResponse:
         + details
         + "</dl><details><summary>View source-linked report</summary><pre>"
         + escape(case.model_dump_json(indent=2))
-        + '</pre></details></section><a href="/cases">Back to investigations</a>',
+        + '</pre></details></section><a href="/cases">Back to investigations</a>'
+        + extra,
         active="cases",
     )
 
@@ -275,11 +278,40 @@ def mount_login(
     list_cases: Callable[[Scope, int], tuple[Case, ...]],
     read_case: Callable[[Scope, str], Case],
     read_events: Callable[[Scope, str], tuple[AuditEvent, ...]],
+    read_action: Callable[[Scope, str], Action | None],
+    change_action: Callable[[Scope, str, str, str | None], Action],
 ) -> None:
+    @app.exception_handler(HTTPException)
+    async def browser_auth_error(request: Request, error: HTTPException) -> Response:
+        if (
+            error.status_code == 401
+            and request.url.path in ("/demo/investigate", "/auth/logout")
+            or (error.status_code == 401 and request.url.path.startswith("/actions/"))
+        ):
+            target = (
+                "/access"
+                if request.url.path == "/auth/logout"
+                else "/cases"
+                if request.url.path == "/demo/investigate"
+                else request.url.path
+            )
+            return page(
+                '<section class="hero"><h1>Your session has ended.</h1><p class="lead">Sign in again, then review and submit your request. Nothing was automatically retried.</p><a class="button" href="/auth/login?'
+                + escape(urlencode({"next": target}), quote=True)
+                + '">Sign in again</a></section>',
+                401,
+            )
+        return await http_exception_handler(request, error)
+
     def current(request: Request) -> tuple[Scope, Session]:
         try:
             return flow.user(request.cookies.get(COOKIE))
         except Unauthenticated as error:
+            if request.method == "GET":
+                raise HTTPException(
+                    303,
+                    headers={"Location": "/auth/login?" + urlencode({"next": request.url.path})},
+                ) from error
             raise HTTPException(401, detail="UNAUTHENTICATED") from error
 
     def form(request: Request, payload: bytes) -> dict[str, str]:
@@ -297,6 +329,8 @@ def mount_login(
             if request.url.path == "/demo/investigate"
             else ({"csrf", "key"},)
         )
+        if request.url.path.startswith("/actions/"):
+            allowed = ({"csrf", "key", "operation", "content_digest"},)
         if set(data) not in allowed or any(len(v) != 1 for v in data.values()):
             raise HTTPException(400, detail="INVALID_FORM")
         return {key: value[0] for key, value in data.items()}
@@ -392,7 +426,12 @@ def mount_login(
     def case_detail(case_id: str, request: Request) -> HTMLResponse:
         scope, _ = current(request)
         case = read_case(scope, case_id)
-        return report(case)
+        link = (
+            '<section class="card"><h2>Next: controlled action</h2><p>Review a synthetic procurement action and its exact approval content.</p><a class="button" href="/actions/'
+            + escape(case_id, quote=True)
+            + '">Open action review</a></section>'
+        )
+        return report(case, link)
 
     @app.get("/evidence", response_class=HTMLResponse)
     def evidence_library(request: Request) -> HTMLResponse:
@@ -453,6 +492,131 @@ def mount_login(
             active="activity",
         )
 
+    @app.get("/actions", response_class=HTMLResponse)
+    def actions_index(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        rows = ""
+        for case in cases:
+            action = read_action(scope, case.case_id)
+            if action is not None or triage(case).disposition == "ESCALATE":
+                rows += (
+                    '<tr><td><a href="/actions/'
+                    + escape(case.case_id, quote=True)
+                    + '">'
+                    + escape(order_name(case))
+                    + "</a></td><td>"
+                    + (action.status if action else "ELIGIBLE FOR PROPOSAL")
+                    + "</td><td>"
+                    + escape(case.case_id)
+                    + "</td></tr>"
+                )
+        return page(
+            '<section class="hero"><h1>Action center</h1><p class="lead">Review exact content, approve it and record one synthetic execution. No supplier is contacted.</p></section><section class="card table-scroll"><table><thead><tr><th>Order</th><th>Workflow state</th><th>Case</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="actions",
+        )
+
+    @app.get("/actions/{case_id}", response_class=HTMLResponse)
+    def action_review(case_id: str, request: Request) -> HTMLResponse:
+        scope, session = current(request)
+        case = read_case(scope, case_id)
+        action = read_action(scope, case_id)
+        content = (
+            '<section class="hero"><h1>Controlled action review</h1><p class="lead">Synthetic procurement review · '
+            + escape(order_name(case))
+            + "</p></section>"
+        )
+        if action is None:
+            content += (
+                '<section class="card"><h2>No action proposal yet</h2><p>'
+                + escape(triage(case).rationale)
+                + "</p></section>"
+            )
+            operation, label = "propose", "Prepare action proposal"
+        else:
+            content += (
+                '<section class="card"><h2>'
+                + action.status
+                + "</h2><h3>Request procurement review</h3><p>"
+                + escape(action.payload.message)
+                + "</p><dl><dt>Purchase order</dt><dd>"
+                + escape(action.payload.order_id)
+                + "</dd><dt>Destination</dt><dd>Local synthetic procurement queue</dd>"
+                + "<dt>Supporting evidence</dt><dd>"
+                + str(len(action.payload.evidence_refs))
+                + " captured records</dd>"
+                + "<dt>Proposed by</dt><dd>"
+                + escape(action.proposed_by)
+                + "</dd>"
+                + "<dt>Approved by</dt><dd>"
+                + escape(action.approved_by or "Awaiting approval")
+                + "</dd></dl>"
+                + "<p>Approval authorizes this exact review request. No supplier will be contacted.</p>"
+                + "<details><summary>Exact content and integrity record</summary><pre>"
+                + escape(action.payload.model_dump_json(indent=2))
+                + "</pre><p>Content SHA-256</p><pre>"
+                + action.content_digest
+                + "</pre></details>"
+            )
+            if action.receipt_id:
+                content += (
+                    "<p>Verified synthetic queue receipt</p><pre>"
+                    + escape(action.receipt_id)
+                    + "</pre>"
+                )
+            content += "</section>"
+            operation, label = (
+                ("approve", "Approve this exact action")
+                if action.status == "PROPOSED"
+                else ("execute", "Execute synthetic action")
+            )
+        permission = {"propose": "investigate", "approve": "approve", "execute": "execute"}[
+            operation
+        ]
+        if action is None and triage(case).disposition != "ESCALATE":
+            content += "<p>Resolve the evidence or SLA outcome before proposing an action.</p>"
+        elif action and action.status == "EXECUTED":
+            content += (
+                "<p>Execution is complete. Repeated execution requests return the same receipt.</p>"
+            )
+        elif permission in scope.permissions:
+            content += (
+                '<form method="post" action="/actions/'
+                + escape(case_id, quote=True)
+                + '"><input type="hidden" name="csrf" value="'
+                + escape(session.csrf, quote=True)
+                + '"><input type="hidden" name="key" value="action"><input type="hidden" name="operation" value="'
+                + operation
+                + '"><input type="hidden" name="content_digest" value="'
+                + (action.content_digest if action else "")
+                + '"><button type="submit">'
+                + label
+                + "</button></form>"
+            )
+        else:
+            content += (
+                "<p>Your account does not have the permission required for the next step.</p>"
+            )
+        content += (
+            '<p><a href="/cases/'
+            + escape(case_id, quote=True)
+            + '">Return to investigation</a></p>'
+        )
+        return page(content, active="actions")
+
+    @app.post("/actions/{case_id}")
+    async def action_submit(case_id: str, request: Request) -> Response:
+        data = form(request, await request.body())
+        scope, session = await run_in_threadpool(current, request)
+        if not secrets.compare_digest(session.csrf.encode(), data["csrf"].encode()):
+            raise HTTPException(403, detail="CSRF_DENIED")
+        await run_in_threadpool(
+            change_action, scope, case_id, data["operation"], data["content_digest"] or None
+        )
+        return RedirectResponse("/actions/" + case_id, status_code=303)
+
     @app.get("/access", response_class=HTMLResponse)
     def access_page(request: Request) -> HTMLResponse:
         scope, session = current(request)
@@ -470,9 +634,9 @@ def mount_login(
         )
 
     @app.get("/auth/login")
-    def login() -> RedirectResponse:
+    def login(next: str = "/") -> RedirectResponse:
         try:
-            location, binding = flow.begin()
+            location, binding = flow.begin(next)
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
         response = RedirectResponse(location, status_code=303)
@@ -503,7 +667,7 @@ def mount_login(
             )
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(flow.user(sid)[1].return_to, status_code=303)
         response.set_cookie(COOKIE, sid, max_age=600, httponly=True, samesite="lax", path="/")
         response.delete_cookie(BINDING, path="/auth")
         response.headers["Referrer-Policy"] = "no-referrer"

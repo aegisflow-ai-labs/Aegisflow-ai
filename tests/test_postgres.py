@@ -423,3 +423,27 @@ def test_case_history_paging_and_tenant_isolation(dsn):
     assert store.list_cases(SCOPE.model_copy(update={"tenant_id": "other"})) == ()
     with pytest.raises(PolicyDenied):
         store.list_cases(SCOPE.model_copy(update={"permissions": frozenset()}))
+
+
+def test_postgres_action_workflow_concurrency(runtime_dsn):
+    from tests.test_actions import exercise_workflow
+
+    store = PostgresStore(runtime_dsn)
+    store.verify_runtime_role()
+    exercise_workflow(store)
+
+
+def test_postgres_action_insert_rollback(dsn):
+    from tests.test_actions import SCOPE as ACTION_SCOPE
+    from tests.test_actions import make_case
+
+    migrate(dsn)
+    store = PostgresStore(dsn)
+    case = make_case(store)
+    proposal = store.transition_action(ACTION_SCOPE, case.case_id, "propose")
+    store.transition_action(ACTION_SCOPE, case.case_id, "approve", proposal["content_digest"])
+    with connect(dsn) as db:
+        db.execute("ALTER TABLE aegis_events ADD CONSTRAINT fail_execution CHECK (revision < 6)")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        store.transition_action(ACTION_SCOPE, case.case_id, "execute", proposal["content_digest"])
+    assert len(store.events(ACTION_SCOPE, case.case_id)) == 5
