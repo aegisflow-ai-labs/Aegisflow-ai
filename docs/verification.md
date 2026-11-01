@@ -150,3 +150,39 @@ resource-server verifier, not completed OIDC login or production identity accept
 Docker Desktop exists on the workstation but the Docker daemon socket is absent,
 so no live Keycloak realm/login was configured or tested. The current main README
 was confirmed English after PR #6 merged. Current remote checks belong to the new PR.
+
+
+## Local Keycloak browser login — 2026-11-01
+
+Full local PostgreSQL 18 suite: **140 tests passed**, none skipped, both in the
+working environment and a freshly created environment installed from the frozen lock.
+Ruff lint/format and strict mypy (13 source files) passed. Twenty-one added tests
+cover Keycloak access/ID token separation, nonce/subject/audience/time/hash validation,
+PKCE challenge, browser-bound single-use state, expiry/capacity, CSRF/Origin, cookie
+flags, source/principal revocation, unavailable policy, idempotent browser replay,
+host restrictions and private setup preservation. Existing RFC 9068 tests still pass.
+
+Real Docker Keycloak 26.8.1 and Google Chrome were exercised through the committed
+browser checker: password login on the local provider, opaque HttpOnly/SameSite
+session, synthetic investigation (25,200 seconds, SLA breach, five snapshots),
+application logout and provider confirmation. Keyboard entry and no horizontal
+mobile overflow were checked; 1280px desktop and 375px mobile screenshots were
+visually inspected. This is limited UI verification, not full WCAG certification.
+The test exposed and corrected a focus-induced layout shift, Chrome's null Origin
+under no-referrer on normal form pages, and CSP-blocked cross-origin logout redirects.
+The callback retains no-referrer; normal pages use same-origin; logout now displays
+an explicit provider link after ending the application session.
+
+pip-audit reported no known vulnerabilities in the locked environment. Gitleaks
+reported no leaks in the source candidate snapshot (tracked plus nonignored new
+files) or commit history. A full local directory scan correctly found generated
+credentials in ignored work/ demo files and an older scratch PR description; these
+are not tracked and were not copied into source, CI artifacts or this record. No
+blanket secret-scan suppression was added. The Docker import volume is also private
+local test state. These findings are not evidence of exposed production credentials.
+
+An additional CI job runs the real Keycloak/browser flow; remote check results are
+recorded on the PR. Production identity lifecycle, TLS/session isolation, provider
+revocation propagation, automatic key refresh and operational limits remain open.
+Role counts remain 36 registered, one implemented/tested subset (A21), one active in
+the golden case and zero model calls. No external business actions were introduced.

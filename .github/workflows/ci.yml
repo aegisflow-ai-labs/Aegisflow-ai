@@ -47,3 +47,35 @@ jobs:
           cache: false
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact --no-banner
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 dir . --redact --no-banner
+
+  browser-login:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install uv==0.13.4
+      - run: uv sync --frozen --no-editable
+      - run: .venv/bin/playwright install --with-deps chromium
+      - name: Start local identity pilot
+        run: |
+          mkdir -p work
+          .venv/bin/python tools/keycloak_demo.py >work/keycloak-api.log 2>&1 &
+          echo $! >work/keycloak-api.pid
+          for attempt in $(seq 1 180); do
+            if curl --fail --silent http://127.0.0.1:8000/ >/dev/null; then exit 0; fi
+            if ! kill -0 $(cat work/keycloak-api.pid) 2>/dev/null; then
+              echo 'Local identity pilot exited before readiness'; exit 1
+            fi
+            sleep 1
+          done
+          echo 'Local identity pilot readiness timed out'; exit 1
+      - name: Verify real browser login and investigation
+        run: .venv/bin/python tools/check_keycloak.py
+      - name: Stop local pilot
+        if: always()
+        run: |
+          if test -f work/keycloak-api.pid; then kill -INT $(cat work/keycloak-api.pid) || true; fi
+          .venv/bin/python tools/keycloak_demo.py stop

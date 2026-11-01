@@ -24,6 +24,7 @@ that have not reached `main` yet.
 - Atomic case/audit persistence in SQLite or explicitly configured PostgreSQL.
 - Tenant-aware API access, PostgreSQL RLS and restricted runtime-role checks.
 - Optional signed access-token verification with issuer/audience/time checks and local revocation.
+- Local Keycloak browser login using Authorization Code + S256 PKCE, opaque sessions and CSRF checks.
 - Exact tenant/subject/source grants, request-time ACL reload and live revocation.
 - Idempotent request handling, concurrent replay protection and transaction rollback.
 - HTTP input limits before JSON parsing: 64 KiB body, 16 KiB aggregate header
@@ -58,7 +59,7 @@ runs; fixed inputs and an explicit investigation time reproduce business results
 
 Run only on localhost with synthetic data. The default demo uses server-configured
 development Bearer keys; optional signed-token verification is described below.
-OIDC login and production identity management remain planned.
+A separate local Keycloak browser pilot is available below; production identity management remains planned.
 
 For a fresh checkout:
 
@@ -200,9 +201,9 @@ can set another tenant context, so it does not secure a compromised server/datab
 credential. HTTP limits bound individual request input; TLS, rate limiting, global
 concurrency budgets and production deployment remain separate work.
 
-Next: review and merge the prerequisite security slices, then introduce OIDC and
-credential lifecycle controls before bounded agentic routing and baseline comparison.
-Real enterprise connectors, UI, root-cause inference, cost/risk alternatives,
+Next: validate the local login pilot, then address production identity/session lifecycle
+requirements before bounded agentic routing and baseline comparison.
+Real enterprise connectors, a full operational UI, root-cause inference, cost/risk alternatives,
 exact-payload human approval, external-action idempotency, postcondition verification,
 compensation, sealed audit, backup/recovery drills and the 300-case benchmark remain
 planned. No production acceptance or measured PDF target is claimed.
@@ -251,5 +252,59 @@ retained for the earlier demo. Configure modes explicitly when deploying a serve
 Only RS256 signed `at+jwt` access tokens with required claims and a maximum
 15-minute lifetime are accepted. Keys/subject mappings are reread on subsequent
 requests. A signed tenant/admin claim cannot override server permissions. Revocation
-is local-file based; full OIDC login, provider discovery, PKCE, refresh and logout
-remain planned. See [ADR-007](docs/adr/007-signed-access-verification.md).
+is local-file based. This default RFC 9068 profile is separate from the explicit
+Keycloak profile used below. Production OIDC lifecycle and refresh remain planned. See [ADR-007](docs/adr/007-signed-access-verification.md).
+
+
+## Try browser login with local Keycloak
+
+Requirements: Docker running, Python/uv as above, and free localhost ports 8000/8080.
+Stop the earlier JWT/API demo first. From the repository directory:
+
+```sh
+uv sync --frozen --no-editable --reinstall-package aegisflow-ai
+.venv/bin/python tools/keycloak_demo.py
+```
+
+Open **http://127.0.0.1:8000/** and choose **Sign in with Keycloak**. Username:
+`analyst`. Open `work/keycloak-local/login.txt` locally for the randomly generated
+password (on macOS: `open work/keycloak-local/login.txt`). Enter it on Keycloak's
+localhost page, then choose **Investigate demo case**. The result shows 25,200 seconds
+of delay, an SLA breach and five source snapshots. **Sign out** ends the application
+session immediately; choose **Finish signing out of Keycloak**, then confirm there
+to end its SSO session as well.
+
+The helper starts a digest-pinned Keycloak 26.8.1 container and provisions an isolated
+realm/client/test user without a default password or bootstrap administrator. Private
+files under ignored `work/keycloak-local/` use mode 0600. Do not share these files,
+commit them or upload the directory as a CI artifact. The import volume also holds
+local test credentials; treat Docker access as trusted. Existing policy files and
+container state are preserved on restart. Incomplete or conflicting setups fail
+rather than silently resetting accounts. An intentional account reset is a separate
+operator action; there is no automatic destructive reset.
+
+Ctrl+C in the helper terminal stops the API and its Keycloak container. If interrupted
+before cleanup, `.venv/bin/python tools/keycloak_demo.py stop` stops only the owned
+provider container; stop the foreground API separately. Demo cases remain in the local
+SQLite file. No enterprise system is modified.
+
+This is a **single-process, local HTTP pilot**, not a production deployment. All local
+processes are trusted: cookies are host-scoped rather than port-scoped and intentionally
+lack `Secure` on HTTP. Sessions are bounded, held only in server memory and expire
+with the signed tokens (at most ten minutes here). Restarting the API clears sessions.
+Access/ID tokens never enter page HTML or browser storage. Refresh tokens are not used
+or persisted. Subject/JTI and source grants are rechecked on requests; provider-side
+logout/revocation from another device is not instantly propagated. Automatic JWKS
+refresh, back-channel logout, shared session storage, TLS/domain isolation, production
+rate limits and credential recovery are not implemented. See [ADR-008](docs/adr/008-local-keycloak-browser-login.md).
+
+With the helper running, reproduce the browser check:
+
+```sh
+.venv/bin/playwright install chromium
+.venv/bin/python tools/check_keycloak.py
+```
+
+For an installed Google Chrome instead of downloading Chromium, set
+`AEGISFLOW_BROWSER_CHANNEL=chrome`. Screenshots stay under ignored `work/browser-check/`.
+CI runs this same flow against a real Keycloak container in a separate browser job.
