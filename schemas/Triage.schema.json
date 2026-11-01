@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "policy_version": {
+      "const": "supply-triage-v1",
+      "default": "supply-triage-v1",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "disposition": {
+      "enum": [
+        "ESCALATE",
+        "MONITOR",
+        "COLLECT_EVIDENCE"
+      ],
+      "title": "Disposition",
+      "type": "string"
+    },
+    "next_step": {
+      "title": "Next Step",
+      "type": "string"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "missing_evidence": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Evidence",
+      "type": "array"
+    },
+    "external_action_executed": {
+      "const": false,
+      "default": false,
+      "title": "External Action Executed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "case_id",
+    "disposition",
+    "next_step",
+    "rationale",
+    "evidence_refs",
+    "missing_evidence"
+  ],
+  "title": "Triage",
+  "type": "object"
+}

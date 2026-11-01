@@ -51,7 +51,7 @@ def test_authenticated_api_and_acl(tmp_path: Path) -> None:
         assert client.post("/v1/cases", json=body, headers=headers).json() == case
         assert len(client.get(path + "/events", headers=headers).json()) == 3
         assert client.get(evidence, headers=headers).json() == case["evidence"][0]
-        for route in (path, path + "/events", evidence):
+        for route in (path, path + "/events", path + "/triage", evidence):
             assert client.get(route).status_code == 401
             assert (
                 client.get(route, headers={"Authorization": f"Bearer {other}"}).status_code == 404

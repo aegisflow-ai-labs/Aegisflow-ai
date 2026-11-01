@@ -13,6 +13,7 @@ from .contracts import Case, Scope
 from .identity import Unauthenticated
 from .oidc import BrowserLogin, LoginCapacity, LoginRejected, Session
 from .store import NotFound, PolicyDenied
+from .triage import triage
 
 COOKIE = "aegisflow_session"
 BINDING = "aegisflow_login"
@@ -23,7 +24,7 @@ main{max-width:960px;margin:auto;padding:32px 24px 64px}header{display:flex;just
 .brand{font-weight:750;font-size:20px}.tag{font-size:14px;color:var(--muted)}h1{font-size:clamp(30px,5vw,44px);line-height:1.15;letter-spacing:-.03em;margin:0 0 16px}h2{font-size:22px;margin:0 0 12px}
 .hero{padding:52px 0 32px}.lead{max-width:60ch;color:var(--muted)}.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:28px;margin:20px 0}
 a{color:var(--accent)}.button,button{display:inline-block;border:0;border-radius:8px;background:var(--accent);color:white;padding:12px 20px;font:600 16px/1.5 system-ui;min-height:48px;text-decoration:none;cursor:pointer}
-.button:hover,button:hover{background:#103e88}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #b54d00;outline-offset:4px}dl{display:grid;grid-template-columns:minmax(100px,1fr) 2fr;gap:10px 24px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;background:var(--bg);padding:16px}summary{cursor:pointer;min-height:44px}footer{color:var(--muted);font-size:14px;margin-top:28px}.skip{position:absolute;left:16px;top:0;transform:translateY(-150%);background:white;padding:10px 16px;min-height:44px}.skip:focus{transform:translateY(0)}form{margin:0}.secondary{background:#344861}
+.button:hover,button:hover{background:#103e88}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #b54d00;outline-offset:4px}dl{display:grid;grid-template-columns:minmax(100px,1fr) 2fr;gap:10px 24px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;background:var(--bg);padding:16px}summary{cursor:pointer;min-height:44px}footer{color:var(--muted);font-size:14px;margin-top:28px}.skip{position:absolute;left:16px;top:0;transform:translateY(-150%);background:white;padding:10px 16px;min-height:44px}.skip:focus{transform:translateY(0)}form{margin:0}select{display:block;max-width:100%;padding:12px;margin:8px 0;font:inherit}select:focus-visible{outline:3px solid #b54d00;outline-offset:4px}.secondary{background:#344861}
 @media(max-width:500px){main{padding:20px 16px}header{align-items:flex-start;flex-direction:column}.card{padding:20px}dl{grid-template-columns:1fr;gap:4px}dd{margin-bottom:12px}}
 """
 
@@ -46,15 +47,30 @@ def page(content: str, status: int = 200) -> HTMLResponse:
     )
 
 
-def csrf_form(session_csrf: str, action: str, label: str) -> str:
+def csrf_form(
+    session_csrf: str, action: str, label: str, orders: tuple[str, ...] | None = None
+) -> str:
+    selection = ""
+    if orders is not None:
+        selection = (
+            '<label for="order">Purchase order</label><select id="order" name="order_id" required>'
+        )
+        selection += "".join(
+            f'<option value="{escape(order, quote=True)}">{escape(order)}</option>'
+            for order in orders
+        )
+        selection += "</select><p>Investigation time: 1 November 2026, 18:00 UTC (synthetic scenario clock).</p>"
     return (
         f'<form method="post" action="{action}"><input type="hidden" name="csrf" value="{escape(session_csrf, quote=True)}">'
-        f'<input type="hidden" name="key" value="ui-{secrets.token_hex(12)}"><button type="submit">{label}</button></form>'
+        f'<input type="hidden" name="key" value="ui-{secrets.token_hex(12)}">{selection}<button type="submit">{label}</button></form>'
     )
 
 
 def mount_login(
-    app: FastAPI, flow: BrowserLogin, investigate: Callable[[Scope, str], Case]
+    app: FastAPI,
+    flow: BrowserLogin,
+    investigate: Callable[[Scope, str, str], Case],
+    available_orders: Callable[[Scope], tuple[str, ...]],
 ) -> None:
     def current(request: Request) -> tuple[Scope, Session]:
         try:
@@ -72,7 +88,12 @@ def mount_login(
         ):
             raise HTTPException(400, detail="INVALID_FORM")
         data = parse_qs(payload.decode("utf-8", errors="replace"), keep_blank_values=True)
-        if set(data) != {"csrf", "key"} or any(len(v) != 1 for v in data.values()):
+        allowed = (
+            ({"csrf", "key"}, {"csrf", "key", "order_id"})
+            if request.url.path == "/demo/investigate"
+            else ({"csrf", "key"},)
+        )
+        if set(data) not in allowed or any(len(v) != 1 for v in data.values()):
             raise HTTPException(400, detail="INVALID_FORM")
         return {key: value[0] for key, value in data.items()}
 
@@ -91,8 +112,10 @@ def mount_login(
             response.delete_cookie(COOKIE, path="/")
             return response
         return page(
-            f'<section class="hero"><h1>Ready to investigate.</h1><p class="lead">Signed in as {escape(scope.subject_id)}. This pilot uses synthetic order PO-001.</p></section><section class="card"><h2>Supplier delivery delay</h2><p>Read the order, delivery, stock, SLA and procedure evidence. Every finding links to a source snapshot.</p>'
-            + csrf_form(session.csrf, "/demo/investigate", "Investigate demo case")
+            f'<section class="hero"><h1>Ready to investigate.</h1><p class="lead">Signed in as {escape(scope.subject_id)}. Choose an authorized synthetic purchase order to investigate.</p></section><section class="card"><h2>Supplier delivery delay</h2><p>Read the order, delivery, stock, SLA and procedure evidence. Every finding links to a source snapshot.</p>'
+            + csrf_form(
+                session.csrf, "/demo/investigate", "Investigate demo case", available_orders(scope)
+            )
             + '</section><section class="card"><h2>Session</h2><p>Sign out here, then confirm on Keycloak to end its login session too.</p>'
             + csrf_form(session.csrf, "/auth/logout", "Sign out")
             + "</section>"
@@ -145,12 +168,28 @@ def mount_login(
         if not secrets.compare_digest(session.csrf.encode(), data["csrf"].encode()):
             raise HTTPException(403, detail="CSRF_DENIED")
         try:
-            case = await run_in_threadpool(investigate, scope, data["key"])
+            case = await run_in_threadpool(
+                investigate, scope, data["key"], data.get("order_id", "PO-001")
+            )
         except (NotFound, PolicyDenied):
             return page(
                 '<h1>Scenario access denied.</h1><p>This account does not have the required source permissions.</p><a href="/">Return to the pilot</a>',
                 403,
             )
+        decision = triage(case)
+        recommendation = (
+            '<section class="card"><h2>'
+            + escape(decision.disposition.replace("_", " ").title())
+            + "</h2><p>"
+            + escape(decision.next_step)
+            + "</p><p>"
+            + escape(decision.rationale)
+            + "</p><ul>"
+            + "".join("<li>" + escape(item) + "</li>" for item in decision.missing_evidence)
+            + "</ul><details><summary>Decision evidence and policy</summary><pre>"
+            + escape(decision.model_dump_json(indent=2))
+            + "</pre></details><p>Recommendation only. No supplier has been contacted.</p></section>"
+        )
         values = {claim.code: claim.value for claim in case.claims}
         details = "".join(
             f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
@@ -163,7 +202,9 @@ def mount_login(
             )
         )
         return page(
-            '<section class="hero"><h1>Investigation complete.</h1><p class="lead">Synthetic supplier delivery case · Deterministic rules</p></section><section class="card"><h2>Findings</h2><dl>'
+            '<section class="hero"><h1>Investigation complete.</h1><p class="lead">Synthetic supplier delivery case · Deterministic rules</p></section>'
+            + recommendation
+            + '<section class="card"><h2>Findings</h2><dl>'
             + details
             + "</dl><details><summary>View source-linked report</summary><pre>"
             + escape(case.model_dump_json(indent=2))

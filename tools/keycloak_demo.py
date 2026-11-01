@@ -23,6 +23,7 @@ from aegisflow.identity import (
     load_json,
 )
 from aegisflow.oidc import BrowserLogin, LocalKeycloak, ProviderKeys
+from aegisflow.pilot_scenarios import pilot_scenarios
 from aegisflow.scenario import generate
 from aegisflow.store import Store
 
@@ -255,7 +256,7 @@ def make_app():
     return create_app(
         Store(DIRECTORY / "cases.db"),
         {},
-        (generate(),),
+        pilot_scenarios(),
         source_access=SourceAccess(DIRECTORY / "source-acl.json"),
         identity=identity,
         browser_login=BrowserLogin(identity, provider),

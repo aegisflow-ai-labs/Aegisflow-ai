@@ -44,6 +44,17 @@ def main():
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(output / "mobile.png"), full_page=True)
         case_id = page.locator("dd").nth(1).inner_text()
+        for order, expected in (
+            ("PO-002", "Monitor"),
+            ("PO-003", "Collect Evidence"),
+            ("PO-004", "Collect Evidence"),
+            ("PO-005", "Escalate"),
+        ):
+            page.goto("http://127.0.0.1:8000/")
+            page.get_by_label("Purchase order").select_option(order)
+            page.get_by_role("button", name="Investigate demo case").click()
+            expect(page.get_by_role("heading", name=expected, exact=True)).to_be_visible()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         old_cookie = cookie["value"]
         subprocess.run(
             [sys.executable, "tools/keycloak_demo.py", "revoke-sessions"],

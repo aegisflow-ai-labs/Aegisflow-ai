@@ -26,6 +26,7 @@ from .login_ui import COOKIE, mount_login
 from .oidc import BrowserLogin
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
+from .triage import Triage, triage
 
 
 class CreateCase(Contract):
@@ -166,6 +167,34 @@ def create_app(
     ) -> Case:
         return investigate_case(body, scope, idempotency_key, policy)
 
+    def available_orders(scope: Scope) -> tuple[str, ...]:
+        Store.authorize(scope, scope.tenant_id, "investigate")
+        policy = source_access.load()
+        orders = []
+        for (tenant, order_id), source in snapshots.items():
+            if tenant != scope.tenant_id:
+                continue
+            try:
+                policy.authorize(scope, source.input_source_uris())
+            except NotFound:
+                continue
+            orders.append(order_id)
+        return tuple(sorted(orders))
+
+    @app.get("/v1/orders", response_model=tuple[str, ...])
+    def orders(scope: Annotated[Scope, Depends(authenticate)]) -> tuple[str, ...]:
+        return available_orders(scope)
+
+    @app.get("/v1/cases/{case_id}/triage", response_model=Triage)
+    def decision(
+        case_id: str,
+        scope: Annotated[Scope, Depends(authenticate)],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
+    ) -> Triage:
+        case = store.read(scope, case_id)
+        policy.authorize(scope, case.input_source_uris)
+        return triage(case)
+
     @app.get("/v1/cases/{case_id}", response_model=Case)
     def read(
         case_id: str,
@@ -202,17 +231,17 @@ def create_app(
 
     if browser_login is not None:
 
-        def run_browser_case(scope: Scope, key: str) -> Case:
+        def run_browser_case(scope: Scope, key: str, order_id: str) -> Case:
             return investigate_case(
                 CreateCase(
-                    order_id="PO-001", as_of=datetime.fromisoformat("2026-11-01T18:00:00+00:00")
+                    order_id=order_id, as_of=datetime.fromisoformat("2026-11-01T18:00:00+00:00")
                 ),
                 scope,
                 key,
                 source_access.load(),
             )
 
-        mount_login(app, browser_login, run_browser_case)
+        mount_login(app, browser_login, run_browser_case, available_orders)
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(RequestLimits)
     return app

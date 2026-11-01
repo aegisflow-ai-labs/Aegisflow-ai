@@ -18,6 +18,7 @@ that have not reached `main` yet.
 ## Implemented capabilities
 
 - Deterministic order/delivery/SLA investigation using seeded synthetic inputs.
+- Five-order browser pilot with tenant/source-filtered selection and evidence-gated operational recommendations.
 - Evidence-linked claims with source versions, immutable snapshots and SHA-256 checksums.
 - Explicit uncertainty for missing, stale or conflicting evidence.
 - Closed Pydantic contracts, versioned JSON Schemas and persisted input dependencies.
@@ -342,3 +343,21 @@ audit trail. Do not run it during somebody else's demo without coordination.
 Existing policy files without the new field remain valid (default zero: no cutoff).
 Older strict parsers reject the new field; rollback must preserve revocation semantics,
 not silently erase it. No database migration is required. See [ADR-009](docs/adr/009-local-identity-lifecycle.md).
+
+## Operational triage pilot
+
+The Keycloak demo now loads five synthetic purchase orders. Select one before
+clicking **Investigate demo case**:
+
+- PO-001: 7-hour delay → procurement escalation recommendation.
+- PO-002: on time → monitor.
+- PO-003: missing SLA → collect evidence.
+- PO-004: conflicting deliveries → collect evidence.
+- PO-005: no delivery recorded, 9 hours overdue → escalation recommendation.
+
+The scenario clock is fixed at **2026-11-01 18:00 UTC**. The result explains the
+next step and exposes its evidence references and policy version. No supplier is
+contacted. Existing case IDs, source snapshots and audit events remain available.
+Authorized API clients can read the order catalog at `GET /v1/orders` and the
+recommendation at `GET /v1/cases/{case_id}/triage`.
+See [ADR-011](docs/adr/011-operational-triage.md) for policy and scope.
