@@ -6,6 +6,7 @@ import os
 import secrets
 import sqlite3
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -15,11 +16,14 @@ from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import AwareDatetime
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
 from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
 from .http_limits import RequestLimits
 from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
+from .login_ui import COOKIE, mount_login
+from .oidc import BrowserLogin
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
 
@@ -40,8 +44,11 @@ def create_app(
     *,
     source_access: SourceAccess,
     identity: JWTIdentity | None = None,
+    browser_login: BrowserLogin | None = None,
 ) -> FastAPI:
     """Only server configuration may assign scopes and source snapshots."""
+    if browser_login is not None and browser_login.identity is not identity:
+        raise ValueError("Browser identity must match API identity")
     if identity is not None and credentials:
         raise ValueError("Authentication modes must not be mixed")
     if identity is None and (
@@ -76,7 +83,22 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
 
-    def authenticate(authorization: Annotated[str | None, Header()] = None) -> Scope:
+    def authenticate(
+        request: HTTPRequest, authorization: Annotated[str | None, Header()] = None
+    ) -> Scope:
+        if authorization is None and browser_login is not None:
+            try:
+                scope, session = browser_login.user(request.cookies.get(COOKIE))
+            except Unauthenticated as error:
+                raise HTTPException(401, detail="UNAUTHENTICATED") from error
+            if request.method not in ("GET", "HEAD", "OPTIONS") and (
+                not secrets.compare_digest(
+                    session.csrf.encode(), request.headers.get("x-csrf-token", "").encode()
+                )
+                or request.headers.get("origin", "http://127.0.0.1:8000") != "http://127.0.0.1:8000"
+            ):
+                raise HTTPException(403, detail="CSRF_DENIED")
+            return scope
         if identity is not None:
             try:
                 return identity.authenticate(authorization)
@@ -117,12 +139,8 @@ def create_app(
     async def unavailable(_: HTTPRequest, __: sqlite3.Error | psycopg.Error) -> JSONResponse:
         return JSONResponse(status_code=503, content={"detail": "DEPENDENCY_UNAVAILABLE"})
 
-    @app.post("/v1/cases", response_model=Case, status_code=201)
-    def create(
-        body: CreateCase,
-        scope: Annotated[Scope, Depends(authenticate)],
-        idempotency_key: Annotated[Identifier, Header()],
-        policy: Annotated[SourcePolicy, Depends(source_access.load)],
+    def investigate_case(
+        body: CreateCase, scope: Scope, idempotency_key: str, policy: SourcePolicy
     ) -> Case:
         Store.authorize(scope, scope.tenant_id, "investigate")
         source = snapshots.get((scope.tenant_id, body.order_id))
@@ -138,6 +156,15 @@ def create_app(
         case = store.run(scope, request, source)
         policy.authorize(scope, case.input_source_uris)
         return case
+
+    @app.post("/v1/cases", response_model=Case, status_code=201)
+    def create(
+        body: CreateCase,
+        scope: Annotated[Scope, Depends(authenticate)],
+        idempotency_key: Annotated[Identifier, Header()],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
+    ) -> Case:
+        return investigate_case(body, scope, idempotency_key, policy)
 
     @app.get("/v1/cases/{case_id}", response_model=Case)
     def read(
@@ -173,6 +200,20 @@ def create_app(
                 return item
         raise NotFound()
 
+    if browser_login is not None:
+
+        def run_browser_case(scope: Scope, key: str) -> Case:
+            return investigate_case(
+                CreateCase(
+                    order_id="PO-001", as_of=datetime.fromisoformat("2026-11-01T18:00:00+00:00")
+                ),
+                scope,
+                key,
+                source_access.load(),
+            )
+
+        mount_login(app, browser_login, run_browser_case)
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(RequestLimits)
     return app
 
