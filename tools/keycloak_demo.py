@@ -1,6 +1,7 @@
 """Start the isolated, localhost-only Keycloak pilot. No default passwords."""
 
 import argparse
+import fcntl
 import json
 import os
 import secrets
@@ -14,8 +15,14 @@ import uvicorn
 from aegisflow.access import SourceAccess, SourceGrant, SourcePolicy
 from aegisflow.api import create_app
 from aegisflow.contracts import Scope
-from aegisflow.identity import IdentityPolicy, IdentityUnavailable, JWTIdentity, PrincipalBinding
-from aegisflow.oidc import BrowserLogin, LocalKeycloak
+from aegisflow.identity import (
+    IdentityPolicy,
+    IdentityUnavailable,
+    JWTIdentity,
+    PrincipalBinding,
+    load_json,
+)
+from aegisflow.oidc import BrowserLogin, LocalKeycloak, ProviderKeys
 from aegisflow.scenario import generate
 from aegisflow.store import Store
 
@@ -211,13 +218,6 @@ def make_app():
         or discovery.get("token_endpoint") != ISSUER + "/protocol/openid-connect/token"
     ):
         raise RuntimeError("Unexpected local provider metadata")
-    raw = provider.fetch("/protocol/openid-connect/certs")
-    keys = [
-        {name: key[name] for name in ("kid", "kty", "alg", "use", "n", "e")}
-        for key in raw["keys"]
-        if key.get("alg") == "RS256" and key.get("use") == "sig"
-    ]
-    write_private(DIRECTORY / "jwks.json", json.dumps({"keys": keys}))
     account = json.loads((DIRECTORY / "login.json").read_text())
     scope = Scope(tenant_id="demo", subject_id="local-demo", permissions={"read", "investigate"})
     # Preserve operator revocations on restart; provision only missing policies.
@@ -246,10 +246,11 @@ def make_app():
     identity = JWTIdentity(
         ISSUER,
         "aegisflow-api",
-        DIRECTORY / "jwks.json",
+        None,
         DIRECTORY / "principals.json",
         profile="keycloak",
         client_id=CLIENT,
+        key_source=ProviderKeys(provider),
     )
     return create_app(
         Store(DIRECTORY / "cases.db"),
@@ -261,12 +262,46 @@ def make_app():
     )
 
 
+def revoke_sessions():
+    """Trusted local operator command; preserve account, grants and prior cutoffs."""
+    with os.fdopen(
+        os.open(DIRECTORY / "operator.lock", os.O_WRONLY | os.O_CREAT, 0o600), "w"
+    ) as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        account = json.loads((DIRECTORY / "login.json").read_text())
+        policy_file = DIRECTORY / "principals.json"
+        policy = IdentityPolicy.model_validate_json(load_json(policy_file))
+        matches = [p for p in policy.principals if p.external_subject == account["subject"]]
+        if len(matches) != 1:
+            raise RuntimeError("Local principal missing; policy was not changed")
+        cutoff = max(int(time.time()), matches[0].tokens_valid_after)
+        bindings = tuple(
+            p.model_copy(update={"tokens_valid_after": cutoff}) if p == matches[0] else p
+            for p in policy.principals
+        )
+        updated = policy.model_copy(
+            update={"revision": "local-revoke-" + uuid4().hex, "principals": bindings}
+        )
+        payload = updated.model_dump_json(indent=2)
+        if len(payload.encode()) > 65536:
+            raise ValueError("Updated identity policy would exceed the verifier limit")
+        write_private(policy_file, payload)
+    print(
+        "Existing local AegisFlow tokens revoked. Sign in again after this UTC second. Keycloak SSO is unchanged."
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Local browser login with isolated Keycloak; synthetic use only"
     )
-    parser.add_argument("command", choices=["start", "stop"], nargs="?", default="start")
+    parser.add_argument(
+        "command", choices=["start", "stop", "revoke-sessions"], nargs="?", default="start"
+    )
     args = parser.parse_args()
+    if args.command == "revoke-sessions":
+        revoke_sessions()
+        return
     if args.command == "stop":
         owner = docker(
             "inspect", CONTAINER, "--format", '{{index .Config.Labels "org.aegisflow.purpose"}}'

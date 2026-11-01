@@ -1,5 +1,9 @@
 # ADR-008: Local Keycloak browser login
 
+Lifecycle extension: [ADR-009](009-local-identity-lifecycle.md) adds bounded local
+provider-key refresh and persisted token cutoffs; the decisions below record this
+slice's original scope.
+
 - Status: accepted for local synthetic pilot only
 - Date: 2026-11-01
 

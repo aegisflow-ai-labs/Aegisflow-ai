@@ -61,10 +61,28 @@ Cookies are shared across ports on the same host: all local processes and Docker
 trusted. Do not expose it to a network or use real credentials. Logout revokes only
 the current application session immediately; follow the displayed provider link and
 confirm to end Keycloak SSO. Other sessions/provider changes are not instantly
-revoked. Production TLS, host isolation, shared session storage, automatic key refresh,
+revoked. Production TLS, host isolation, shared session storage, production key lifecycle,
 back-channel logout, recovery and operational limits remain open (ADR-008).
 
 Generated password/import files belong only under private ignored work/ storage.
 Do not upload work/ in CI artifacts. A directory-wide secret scan will correctly
 flag these local credentials; scan the version-controlled source snapshot/history
 separately and never suppress actual source findings to hide demo files.
+
+
+## Local identity lifecycle
+
+The Keycloak helper uses a fixed-endpoint, per-process public-key cache with at most
+60 seconds of freshness and a five-second failed-fetch cooldown. Unknown kids never
+force refresh; key removals take effect at the next expired-cache request. Expired
+keys are not reused on failure. Fresh keys can continue working until TTL expiry;
+this is not instant provider-side revocation. No token chooses a URL, key source or
+refresh schedule. The file-based JWT mode still reloads its trusted file per request.
+
+A persisted per-principal issued-at cutoff revokes local tokens and sessions on
+subsequent requests while preserving the account and grants. The local operator
+command uses an advisory process lock plus atomic private-file replacement and does
+not lower prior cutoffs. Its lock does not coordinate arbitrary external file editors.
+Only trusted operators may change policies. This is not Keycloak SSO termination,
+back-channel logout, a remote administrative API or a complete operator audit trail.
+Preserve cutoffs across upgrades/rollbacks; see ADR-009 for compatibility and limits.

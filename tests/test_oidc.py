@@ -319,3 +319,18 @@ def test_helper_private_setup_preserves_credentials_and_rejects_partial(tmp_path
     with pytest.raises(RuntimeError):
         keycloak_demo.prepare()
     assert (directory / "login.json").read_bytes() == original
+
+
+def test_persisted_cutoff_invalidates_browser_session_and_cannot_resurrect(flow):
+    sid = session(flow)
+    policy_file = flow.identity.principals_file
+    original = policy_file.read_text()
+    data = json.loads(original)
+    data["principals"][0]["tokens_valid_after"] = int(NOW.timestamp())
+    policy_file.write_text(json.dumps(data))
+    with pytest.raises(Unauthenticated):
+        flow.user(sid)
+    assert not flow.sessions
+    policy_file.write_text(original)
+    with pytest.raises(Unauthenticated):
+        flow.user(sid)
