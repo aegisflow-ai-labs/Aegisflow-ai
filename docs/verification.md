@@ -130,10 +130,10 @@ not an independent comprehensive security audit or a production-security guarant
 
 ## Signed access-token foundation — 2026-11-01
 
-Full local suite against PostgreSQL 18.4: **118 tests passed**, none skipped; Ruff
+Full local suite against PostgreSQL 18.4: **119 tests passed**, none skipped; Ruff
 lint/format and strict mypy (11 source files) passed. Required claims, exact time
 boundaries, wrong issuer/audience, unsigned/HMAC/tampered tokens, ID-token type,
-untrusted key/URL headers, weak/private/duplicate keys, principal/JTI removal,
+untrusted key/URL/deeply nested headers, weak/private/duplicate keys, principal/JTI removal,
 key rotation and malformed/missing configuration were exercised. Server-side scope
 mapping ignores token tenant/admin claims. The JWT HTTP mode was tested with SQLite
 and restricted PostgreSQL/RLS, including replay and subsequent subject revocation.

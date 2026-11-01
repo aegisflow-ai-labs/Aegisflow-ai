@@ -155,6 +155,6 @@ class JWTIdentity:
             for principal in policy.principals:
                 if principal.external_subject == claims["sub"]:
                     return principal.scope
-        except (jwt.PyJWTError, ValueError, TypeError) as error:
+        except (jwt.PyJWTError, ValueError, TypeError, RecursionError) as error:
             raise Unauthenticated() from error
         raise Unauthenticated()

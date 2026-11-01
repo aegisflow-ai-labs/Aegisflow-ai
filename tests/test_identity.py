@@ -330,3 +330,19 @@ def test_identity_policy_duplicate_subject_and_invalid_scope_rejected():
                 },
             }
         )
+
+
+def test_deep_untrusted_header_is_an_authentication_failure(identity):
+    import base64
+
+    header = (
+        b'{"alg":"RS256","typ":"at+jwt","kid":"key-1","nested":'
+        + b"[" * 2500
+        + b"0"
+        + b"]" * 2500
+        + b"}"
+    )
+    token = base64.urlsafe_b64encode(header).rstrip(b"=").decode() + ".e30.eA"
+    assert len(token) < 8192
+    with pytest.raises(Unauthenticated):
+        identity.authenticate("Bearer " + token)
