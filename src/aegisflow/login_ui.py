@@ -511,11 +511,26 @@ def mount_login(
             content += (
                 '<section class="card"><h2>'
                 + action.status
-                + "</h2><p>Review all content below. Approval is bound to this exact payload.</p><pre>"
+                + "</h2><h3>Request procurement review</h3><p>"
+                + escape(action.payload.message)
+                + "</p><dl><dt>Purchase order</dt><dd>"
+                + escape(action.payload.order_id)
+                + "</dd><dt>Destination</dt><dd>Local synthetic procurement queue</dd>"
+                + "<dt>Supporting evidence</dt><dd>"
+                + str(len(action.payload.evidence_refs))
+                + " captured records</dd>"
+                + "<dt>Proposed by</dt><dd>"
+                + escape(action.proposed_by)
+                + "</dd>"
+                + "<dt>Approved by</dt><dd>"
+                + escape(action.approved_by or "Awaiting approval")
+                + "</dd></dl>"
+                + "<p>Approval authorizes this exact review request. No supplier will be contacted.</p>"
+                + "<details><summary>Exact content and integrity record</summary><pre>"
                 + escape(action.payload.model_dump_json(indent=2))
                 + "</pre><p>Content SHA-256</p><pre>"
                 + action.content_digest
-                + "</pre>"
+                + "</pre></details>"
             )
             if action.receipt_id:
                 content += (

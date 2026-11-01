@@ -72,6 +72,7 @@ def exercise_workflow(store):
         "ActionApproved",
         "ActionExecuted",
     ]
+    assert all(e.actor_id == "operator" for e in store.events(SCOPE, case.case_id)[3:])
     with pytest.raises(NotFound):
         store.transition_action(
             SCOPE.model_copy(update={"tenant_id": "other"}), case.case_id, "propose"

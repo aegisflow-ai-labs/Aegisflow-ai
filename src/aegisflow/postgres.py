@@ -222,6 +222,7 @@ class PostgresStore:
                     "event_type": kind,
                     "occurred_at": now,
                     "producer": "action-workflow-v1",
+                    "actor_id": scope.subject_id,
                     "causation_id": action.action_id,
                     "payload_refs": (action.action_id,),
                     "action_record": action.model_dump(mode="json"),

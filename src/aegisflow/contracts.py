@@ -223,6 +223,7 @@ class AuditEvent(Contract):
         "deterministic-baseline-v1"
     )
     action_record: Action | None = None
+    actor_id: Identifier | None = None
     causation_id: Identifier
     payload_refs: tuple[Identifier, ...]
 

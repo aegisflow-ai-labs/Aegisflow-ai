@@ -15,7 +15,7 @@ Execution verifies it again and requires a recorded approval.
 
 Use the existing append-only case event tables as the action ledger:
 ActionProposed, ActionApproved, ActionExecuted each carry a closed, validated
-Action snapshot. This is an additive v1 contract extension; old case/audit records
+Action snapshot and the acting identity. The optional actor_id field remains absent/null when reading historical records that did not capture it; identity is never invented. This is an additive v1 contract extension; old case/audit records
 remain readable through the absent optional action_record default.
 Readers must be upgraded before writers use the new event kinds. No SQL migration
 or extra database privilege is required.
