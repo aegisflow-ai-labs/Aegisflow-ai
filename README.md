@@ -201,8 +201,8 @@ can set another tenant context, so it does not secure a compromised server/datab
 credential. HTTP limits bound individual request input; TLS, rate limiting, global
 concurrency budgets and production deployment remain separate work.
 
-Next: validate the local login pilot, then address production identity/session lifecycle
-requirements before bounded agentic routing and baseline comparison.
+Next: bounded task routing with deterministic permissions/tool budgets and baseline
+comparison. Production identity acceptance remains a separate deployment gate.
 Real enterprise connectors, a full operational UI, root-cause inference, cost/risk alternatives,
 exact-payload human approval, external-action idempotency, postcondition verification,
 compensation, sealed audit, backup/recovery drills and the 300-case benchmark remain
@@ -258,7 +258,8 @@ Keycloak profile used below. Production OIDC lifecycle and refresh remain planne
 
 ## Try browser login with local Keycloak
 
-Requirements: Docker running, Python/uv as above, and free localhost ports 8000/8080.
+The local Docker helper currently supports macOS/Linux. Requirements: Docker running,
+Python/uv as above, and free localhost ports 8000/8080.
 Stop the earlier JWT/API demo first. From the repository directory:
 
 ```sh
@@ -294,8 +295,7 @@ lack `Secure` on HTTP. Sessions are bounded, held only in server memory and expi
 with the signed tokens (at most ten minutes here). Restarting the API clears sessions.
 Access/ID tokens never enter page HTML or browser storage. Refresh tokens are not used
 or persisted. Subject/JTI and source grants are rechecked on requests; provider-side
-logout/revocation from another device is not instantly propagated. Automatic JWKS
-refresh, back-channel logout, shared session storage, TLS/domain isolation, production
+logout/revocation from another device is not instantly propagated. Back-channel logout, shared session storage, TLS/domain isolation, production
 rate limits and credential recovery are not implemented. See [ADR-008](docs/adr/008-local-keycloak-browser-login.md).
 
 With the helper running, reproduce the browser check:
@@ -307,4 +307,38 @@ With the helper running, reproduce the browser check:
 
 For an installed Google Chrome instead of downloading Chromium, set
 `AEGISFLOW_BROWSER_CHANNEL=chrome`. Screenshots stay under ignored `work/browser-check/`.
-CI runs this same flow against a real Keycloak container in a separate browser job.
+CI runs this same flow against a real Keycloak container in a separate browser job,
+including revocation of an active session, re-login and rejection of its old cookie.
+
+
+### Local session revocation and signing-key changes
+
+The Keycloak helper refreshes public verification keys on demand after at most 60
+seconds of cached freshness. Only the fixed local provider's certificate endpoint is
+used. Unknown token key IDs return 401 without triggering extra fetches. After a key
+is removed, tokens using it stop working when the cached set expires. If refresh
+fails, authentication returns 503 rather than using expired cached keys; retries are
+limited to one attempt per five seconds per process. Fresh cached keys remain usable
+until their expiry, so provider changes/outages are not detected instantly. There is
+no on-disk fallback in this mode. The separate file-configured JWT demo stays unchanged.
+
+To invalidate the local demo user's existing AegisFlow access tokens and browser
+sessions without deleting the account, run from the repository in another terminal:
+
+```sh
+.venv/bin/python tools/keycloak_demo.py revoke-sessions
+```
+
+The command atomically persists a per-principal `tokens_valid_after` UTC second in
+`work/keycloak-local/principals.json`, preserves grants/passwords and never lowers an
+existing cutoff. Tokens issued **at or before** that second are rejected on subsequent
+requests. Wait until the next second and sign in again; Keycloak SSO may make this
+immediate without asking for a password. Already downloaded results and in-flight
+requests are not recalled. Restarting the API retains the cutoff. This command does
+not end Keycloak SSO or other applications' sessions, and is a trusted local operator
+tool rather than a remotely accessible administration API or a complete security
+audit trail. Do not run it during somebody else's demo without coordination.
+
+Existing policy files without the new field remain valid (default zero: no cutoff).
+Older strict parsers reject the new field; rollback must preserve revocation semantics,
+not silently erase it. No database migration is required. See [ADR-009](docs/adr/009-local-identity-lifecycle.md).

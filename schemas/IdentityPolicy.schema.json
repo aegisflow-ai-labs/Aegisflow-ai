@@ -17,6 +17,12 @@
         },
         "scope": {
           "$ref": "#/$defs/Scope"
+        },
+        "tokens_valid_after": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Tokens Valid After",
+          "type": "integer"
         }
       },
       "required": [

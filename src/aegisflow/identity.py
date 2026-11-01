@@ -41,6 +41,7 @@ class PublicKeys(BaseModel):
 class PrincipalBinding(Contract):
     external_subject: BoundedString
     scope: Scope
+    tokens_valid_after: Annotated[int, Field(strict=True, ge=0)] = 0
 
 
 class IdentityPolicy(Contract):
@@ -71,21 +72,35 @@ def load_json(path: Path) -> str:
     return payload.decode("utf-8")
 
 
+def verification_keys(public: PublicKeys) -> dict[str, jwt.PyJWK]:
+    keys = {}
+    for item in public.keys:
+        key = jwt.PyJWK.from_dict(item.model_dump(mode="json"), algorithm="RS256")
+        if not 2048 <= key.key.key_size <= 8192:
+            raise ValueError("Unsupported RSA size")
+        keys[item.kid] = key
+    return keys
+
+
 class JWTIdentity:
     def __init__(
         self,
         issuer: str,
         audience: str,
-        jwks_file: Path,
+        jwks_file: Path | None,
         principals_file: Path,
         clock: Callable[[], datetime] | None = None,
         profile: Literal["rfc9068", "keycloak"] = "rfc9068",
         client_id: str | None = None,
+        key_source: Callable[[], PublicKeys] | None = None,
     ) -> None:
         if not issuer or not audience or len(issuer) > 1024 or len(audience) > 256:
             raise ValueError("Explicit issuer and audience required")
         if profile not in ("rfc9068", "keycloak") or (profile == "keycloak" and not client_id):
             raise ValueError("Explicit Keycloak client required")
+        if (jwks_file is None) == (key_source is None):
+            raise ValueError("Exactly one trusted public-key source required")
+        self.key_source = key_source
         self.profile = profile
         self.client_id = client_id
         self.issuer = issuer
@@ -97,13 +112,13 @@ class JWTIdentity:
 
     def _load(self) -> tuple[dict[str, jwt.PyJWK], IdentityPolicy]:
         try:
-            public = PublicKeys.model_validate_json(load_json(self.jwks_file))
-            keys = {}
-            for item in public.keys:
-                key = jwt.PyJWK.from_dict(item.model_dump(mode="json"), algorithm="RS256")
-                if not 2048 <= key.key.key_size <= 8192:
-                    raise ValueError("Unsupported RSA size")
-                keys[item.kid] = key
+            if self.key_source is not None:
+                public = self.key_source()
+            elif self.jwks_file is not None:
+                public = PublicKeys.model_validate_json(load_json(self.jwks_file))
+            else:
+                raise IdentityUnavailable("Trusted public-key source unavailable")
+            keys = verification_keys(public)
             policy = IdentityPolicy.model_validate_json(load_json(self.principals_file))
             return keys, policy
         except (OSError, ValueError, jwt.PyJWTError) as error:
@@ -118,6 +133,8 @@ class JWTIdentity:
         claims, policy = self._verify_access(token)
         for principal in policy.principals:
             if principal.external_subject == claims["sub"]:
+                if principal.tokens_valid_after and claims["iat"] <= principal.tokens_valid_after:
+                    raise Unauthenticated()
                 return principal.scope
         raise Unauthenticated()
 
@@ -179,7 +196,6 @@ class JWTIdentity:
             return claims, policy
         except (jwt.PyJWTError, ValueError, TypeError, RecursionError) as error:
             raise Unauthenticated() from error
-        raise Unauthenticated()
 
     def verify_login(self, access_token: str, id_token: str, nonce: str) -> tuple[Scope, int]:
         if self.profile != "keycloak":

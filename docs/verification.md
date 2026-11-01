@@ -186,3 +186,38 @@ recorded on the PR. Production identity lifecycle, TLS/session isolation, provid
 revocation propagation, automatic key refresh and operational limits remain open.
 Role counts remain 36 registered, one implemented/tested subset (A21), one active in
 the golden case and zero model calls. No external business actions were introduced.
+
+
+## Bounded local identity lifecycle — 2026-11-01
+
+Full suite with a disposable Docker PostgreSQL 18 instance: **160 tests passed**,
+none skipped, in both the working venv and a fresh frozen-lock environment. Ruff
+lint/format and strict mypy (13 source files) passed. Twenty additional tests cover
+exact key-cache expiry, rotation/removal, malformed/private/weak/duplicate keys,
+concurrent refresh, failed-fetch cooldown/recovery, unknown-kid fetch suppression,
+generic HTTP 503, explicit key-source selection, startup failure, persisted cutoff
+boundaries and browser-session invalidation. Operator tests verify grant preservation,
+monotonic cutoff under clock rollback, private atomic replacement and write failures.
+The exported IdentityPolicy schema was regenerated and its drift test passes.
+
+The committed checker passed against real Docker Keycloak 26.8.1 and Google Chrome:
+login and source-linked result, operator revocation of the active session, immediate
+401 on its next API request, successful subsequent SSO login with a different opaque
+cookie, rejection of the old cookie, application logout and provider confirmation.
+The same check is part of the existing required browser-login CI job. No Keycloak
+administration-console rotation was performed; RSA rotation/removal/failure and
+cache-time boundaries use controlled test providers. The browser uses the real
+provider's fixed certificate endpoint. This distinction is intentional.
+
+No dependency was added or upgraded. pip-audit reported no known vulnerabilities.
+Gitleaks source-candidate and history scans found no leaks; generated ignored local
+credentials were excluded from the source snapshot as explained in the prior record.
+The operator tool and its advisory lock currently target macOS/Linux. There is no
+remote administration endpoint, full administrator audit trail or provider-side
+instant logout propagation. A fresh key cache can remain usable up to 60 seconds;
+a failed refresh cannot use expired keys. Local HTTP/session limitations remain.
+
+Role counts and deterministic findings are unchanged: 36 registered roles, one
+implemented/tested A21 subset, one active golden-case role, zero model calls and no
+external business actions. Production identity acceptance is a separate deployment
+gate; the next pilot slice is bounded task routing and deterministic budgets.

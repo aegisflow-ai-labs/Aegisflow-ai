@@ -4,15 +4,25 @@ import hashlib
 import json
 import secrets
 import threading
+import time
 from base64 import urlsafe_b64encode
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+import jwt
+
 from .contracts import Scope
-from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
+from .identity import (
+    IdentityUnavailable,
+    JWTIdentity,
+    PublicKeys,
+    Unauthenticated,
+    verification_keys,
+)
 
 
 class LoginRejected(Exception):
@@ -77,7 +87,7 @@ class LocalKeycloak:
             if path == "/protocol/openid-connect/token" and error.code in (400, 401):
                 raise LoginRejected() from error
             raise IdentityUnavailable("Local identity provider unavailable") from error
-        except (URLError, OSError, ValueError, TypeError) as error:
+        except (URLError, OSError, ValueError, TypeError, RecursionError) as error:
             raise IdentityUnavailable("Local identity provider unavailable") from error
 
     def exchange(self, code: str, verifier: str) -> dict[str, object]:
@@ -91,6 +101,60 @@ class LocalKeycloak:
                 "code_verifier": verifier,
             },
         )
+
+
+class ProviderKeys:
+    """Fixed-source, demand-refreshed JWKS; no token-triggered network refresh."""
+
+    def __init__(
+        self, provider: LocalKeycloak, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self.provider, self.clock = provider, clock
+        self._public: PublicKeys | None = None
+        self._expires = 0.0
+        self._retry_at = 0.0
+        self._lock = threading.Lock()
+
+    def __call__(self) -> PublicKeys:
+        with self._lock:
+            now = self.clock()
+            if self._public is not None and now < self._expires:
+                return self._public
+            if now < self._retry_at:
+                raise IdentityUnavailable("Public-key refresh cooling down")
+            try:
+                raw = self.provider.fetch("/protocol/openid-connect/certs")
+                items = raw.get("keys")
+                if not isinstance(items, list) or not 1 <= len(items) <= 16:
+                    raise ValueError("Invalid provider key set")
+                accepted = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        raise TypeError("Invalid provider key")
+                    # Keycloak also publishes encryption keys and certificate metadata.
+                    # Strip only public certificate metadata, never private key material.
+                    if any(k in item for k in ("d", "p", "q", "dp", "dq", "qi", "oth", "k")):
+                        raise ValueError("Private key material forbidden")
+                    if item.get("alg") == "RS256" and item.get("use") == "sig":
+                        accepted.append(
+                            {k: v for k, v in item.items() if k not in ("x5c", "x5t", "x5t#S256")}
+                        )
+                public = PublicKeys.model_validate({"keys": accepted})
+                verification_keys(public)  # Validate key size/material before caching success.
+            except (
+                IdentityUnavailable,
+                ValueError,
+                TypeError,
+                RecursionError,
+                jwt.PyJWTError,
+            ) as error:
+                self._public = None
+                self._retry_at = self.clock() + 5
+                raise IdentityUnavailable("Trusted provider keys unavailable") from error
+            self._public = public
+            self._expires = now + 60
+            self._retry_at = 0.0
+            return public
 
 
 @dataclass(frozen=True)

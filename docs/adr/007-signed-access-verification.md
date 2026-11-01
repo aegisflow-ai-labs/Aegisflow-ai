@@ -1,5 +1,9 @@
 # ADR-007 — Signed access-token verification before provider integration
 
+Lifecycle extension: [ADR-009](009-local-identity-lifecycle.md) adds bounded local
+provider-key refresh and persisted token cutoffs; the decisions below record this
+slice's original scope.
+
 Status: accepted for the synthetic pilot, 2026-11-01.
 
 ## Decision and boundaries

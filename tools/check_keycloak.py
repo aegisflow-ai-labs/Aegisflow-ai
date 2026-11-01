@@ -2,6 +2,9 @@
 
 import json
 import os
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 from playwright.sync_api import Error as BrowserError
@@ -40,7 +43,37 @@ def main():
         page.set_viewport_size({"width": 375, "height": 812})
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(output / "mobile.png"), full_page=True)
-        page.get_by_role("link", name="Back to the pilot").click()
+        case_id = page.locator("dd").nth(1).inner_text()
+        old_cookie = cookie["value"]
+        subprocess.run(
+            [sys.executable, "tools/keycloak_demo.py", "revoke-sessions"],
+            capture_output=True,
+            check=True,
+        )
+        revoked = page.request.get("http://127.0.0.1:8000/v1/cases/" + case_id)
+        assert revoked.status == 401
+        page.goto("http://127.0.0.1:8000/")
+        expect(page.get_by_role("heading", name="Investigate with evidence.")).to_be_visible()
+        cutoff = json.loads(Path("work/keycloak-local/principals.json").read_text())["principals"][
+            0
+        ]["tokens_valid_after"]
+        delay = cutoff + 1.1 - time.time()
+        assert delay < 2, "Unexpected future cutoff in local browser test"
+        time.sleep(max(0.0, delay))
+        page.get_by_role("link", name="Sign in with Keycloak").click()
+        expect(page.get_by_role("heading", name="Ready to investigate.")).to_be_visible()
+        new_cookie = next(
+            c
+            for c in page.context.cookies("http://127.0.0.1:8000/")
+            if c["name"] == "aegisflow_session"
+        )
+        assert new_cookie["value"] != old_cookie
+        replay = page.request.get(
+            "http://127.0.0.1:8000/v1/cases/" + case_id,
+            headers={"Cookie": "aegisflow_session=" + old_cookie},
+        )
+        assert replay.status == 401
+
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("heading", name="Application session ended.")).to_be_visible()
         page.get_by_role("link", name="Finish signing out of Keycloak").click()
@@ -51,14 +84,14 @@ def main():
         assert not errors
         browser.close()
     print(
-        "PASS: real Keycloak login, investigation, desktop/mobile layout, keyboard entry and logout"
+        "PASS: real Keycloak login, investigation, desktop/mobile layout, session revocation/re-login and logout"
     )
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (BrowserError, AssertionError):
+    except (BrowserError, AssertionError, subprocess.CalledProcessError):
         # Browser diagnostics can include callback URLs or entered values.
         raise SystemExit(
             "FAIL: local browser flow; no credentials or callback diagnostics emitted"
