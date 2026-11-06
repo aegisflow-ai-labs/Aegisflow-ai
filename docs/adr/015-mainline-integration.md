@@ -19,6 +19,8 @@ escaping check to the current case workbench. Preserve the checksum disclosure,
 desktop overflow and mobile landscape browser checks alongside the existing
 navigation, sign-in return, evidence, scenario and action lifecycle checks.
 
+CI also exposed horizontal overflow with long unresolved results at landscape width. Bound metric grid tracks and allow metrics/map controls to wrap instead of weakening the overflow assertions.
+
 No dependency versions, data contracts, migrations, business rules or specialist
 implementation states are changed by this integration. Update current README
 wording to describe the actual map preview and persisted case views.
