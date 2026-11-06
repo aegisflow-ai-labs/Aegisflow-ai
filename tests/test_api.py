@@ -46,12 +46,16 @@ def test_authenticated_api_and_acl(tmp_path: Path) -> None:
         first = client.post("/v1/cases", json=body, headers=headers)
         assert first.status_code == 201
         case = first.json()
+        assert len(client.get("/v1/cases", headers=headers).json()) == 1
+        assert client.get("/v1/cases", headers={"Authorization": f"Bearer {other}"}).json() == []
+        assert client.get("/v1/cases").status_code == 401
+        assert client.get("/v1/cases?offset=-1", headers=headers).status_code == 422
         path = f"/v1/cases/{case['case_id']}"
         evidence = f"{path}/evidence/{case['evidence'][0]['evidence_id']}"
         assert client.post("/v1/cases", json=body, headers=headers).json() == case
         assert len(client.get(path + "/events", headers=headers).json()) == 3
         assert client.get(evidence, headers=headers).json() == case["evidence"][0]
-        for route in (path, path + "/events", evidence):
+        for route in (path, path + "/events", path + "/triage", evidence):
             assert client.get(route).status_code == 401
             assert (
                 client.get(route, headers={"Authorization": f"Bearer {other}"}).status_code == 404

@@ -6,36 +6,74 @@ from html import escape
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from .contracts import Case, Scope
+from .contracts import Action, AuditEvent, Case, Scope
 from .identity import Unauthenticated
 from .oidc import BrowserLogin, LoginCapacity, LoginRejected, Session
 from .store import NotFound, PolicyDenied
+from .triage import triage
+from .workspace import CSS as WORKSPACE_CSS
+from .workspace import JS as WORKSPACE_JS
+from .workspace import agent_map
 
 COOKIE = "aegisflow_session"
 BINDING = "aegisflow_login"
 CSS = """
-:root{color-scheme:dark;--bg:#090e16;--paper:#101824;--ink:#edf3fa;--muted:#a0aec0;--line:#263244;--accent:#4be0b2}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}button,.button,summary{cursor:pointer}button,.button{display:inline-block;background:var(--accent);color:#07251c;border:0;border-radius:9px;padding:12px 20px;font:600 14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:46px}button:hover,.button:hover{background:#8aefcf;text-decoration:none}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #7bbcff;outline-offset:4px}.skip{position:absolute;z-index:5;left:16px;top:0;transform:translateY(-150%);background:var(--paper);padding:12px}.skip:focus{transform:none}.sidebar{position:fixed;inset:0 auto 0 0;width:230px;padding:30px 22px;border-right:1px solid var(--line);background:#0b111b;display:flex;flex-direction:column}.brand{font-size:23px;font-weight:750;letter-spacing:-1px;color:var(--ink)}.brand b{display:inline-grid;place-items:center;background:var(--accent);color:#09251e;width:34px;height:36px;border-radius:10px;margin-right:10px}.sidebar small,.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}nav{margin-top:50px;display:grid;gap:9px}nav a{padding:13px 14px;border-radius:8px;color:#b7c3d4}nav a:hover{background:#12302c;color:var(--accent)}.sidebar-bottom{margin-top:auto;border-top:1px solid var(--line);padding-top:20px;color:var(--muted);font-size:12px}main{margin-left:230px;min-height:100vh;padding:0 40px 28px;max-width:1900px}header{height:86px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:20px}.tag{font-size:12px;color:#b0c1d4;border:1px solid var(--line);border-radius:30px;padding:6px 13px}.crumb{color:var(--muted);font-size:13px}.crumb strong{color:var(--ink);font-weight:500}.hero{padding:40px 0 22px}h1{font-size:clamp(28px,3.2vw,43px);line-height:1.15;letter-spacing:-1.6px;margin:12px 0 14px;font-weight:650}h2{font-size:19px;letter-spacing:-.4px;margin:0 0 12px}p{margin:10px 0}.lead{color:var(--muted);max-width:70ch}.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:26px;margin:20px 0}.stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:12px;margin:22px 0;overflow:hidden}.stat{padding:20px 24px;background:#0e1621;border-right:1px solid var(--line)}.stat:last-child{border:0}.stat strong{display:block;font-size:29px;letter-spacing:-1px;font-weight:600}.stat span{color:var(--muted);font-size:12px}.stat em{font-style:normal;color:var(--accent);font-size:11px}.map{border:1px solid var(--line);border-radius:14px;background-color:#0b121d;background-image:radial-gradient(#273344 1px,transparent 1px);background-size:22px 22px;padding:26px;margin:24px 0}.map-top{display:flex;justify-content:space-between;gap:16px;margin-bottom:26px}.map-top p{font-size:12px;color:var(--muted);margin:0}.graph{display:grid;grid-template-columns:1fr 70px 1fr 70px 1.5fr;align-items:center;min-height:350px}.graph>*{min-width:0}.node{background:#111c29;border:1px solid #334458;border-radius:12px;padding:22px;box-shadow:0 12px 35px #0003}.node strong{display:block;font-size:17px;margin:12px 0 5px}.node p{font-size:12px;color:var(--muted)}.node-code{color:var(--accent);font-family:monospace;font-size:12px}.connector{height:1px;background:#42645f;position:relative}.connector:after{content:"";position:absolute;right:0;top:-3px;border-left:7px solid var(--accent);border-top:4px solid transparent;border-bottom:4px solid transparent}.sources{display:grid;gap:10px}.source{background:#101a27;border:1px solid var(--line);border-radius:9px;padding:13px 16px}.source summary{min-height:44px;font-size:13px}.source small{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.source pre{max-height:280px;overflow:auto}.map-caption{border-top:1px solid var(--line);padding-top:17px;margin-top:24px;display:flex;gap:24px;flex-wrap:wrap;color:var(--muted);font-size:12px}.dot{display:inline-block;width:7px;height:7px;background:var(--accent);border-radius:50%;margin-right:7px}.workspace-note{display:flex;justify-content:space-between;gap:20px;align-items:center}.workspace-note p{color:var(--muted);font-size:13px}.pill{align-self:flex-start;display:inline-block;padding:4px 9px;background:#19362e;color:#7defc7;border-radius:5px;font-size:11px}dl{display:grid;grid-template-columns:1fr 2fr;gap:12px 22px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 monospace;background:#080e17;padding:16px;border-radius:8px}summary{min-height:44px;padding:9px 0}footer{font-size:11px;color:var(--muted);padding:25px 0 0}form{margin:0}.secondary{background:var(--paper);color:var(--ink)}
-@media(min-width:1200px){body:has(.graph) .hero{padding-top:32px}}
-@media(max-width:1100px){.sidebar{width:190px;padding:24px 16px}main{margin-left:190px;padding:0 24px 24px}.graph{grid-template-columns:1fr 35px 1fr}.sources{grid-column:1/-1;margin-top:22px;grid-template-columns:repeat(2,1fr)}.graph>.connector:nth-of-type(4){display:none}.stats{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:700px){.sidebar{position:static;width:auto;padding:16px 20px;border-right:0;border-bottom:1px solid var(--line)}.sidebar nav,.sidebar-bottom{display:none}main{margin-left:0;padding:0 18px 24px}header{height:68px}.crumb{font-size:11px}.tag{font-size:10px;padding:5px 8px}.hero{padding-top:26px}.stats{grid-template-columns:repeat(2,1fr)}.stat{padding:15px}.stat strong{font-size:24px}.map{padding:18px}.graph{display:flex;flex-direction:column;gap:16px;align-items:stretch;min-height:0}.connector{height:20px;width:1px;align-self:center}.connector:after{display:none}.sources{display:grid;grid-template-columns:1fr;margin:0}.workspace-note,.map-top{align-items:flex-start;flex-direction:column}.card{padding:20px}dl{grid-template-columns:1fr;gap:4px}dd{margin-bottom:12px}.lead{font-size:14px}}
+:root{color-scheme:dark;--ink:#eef3fb;--muted:#9baac0;--accent:#79e6ca;--line:#273349;--paper:#121c2c;--bg:#0b1220}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,sans-serif}
+main{max-width:1500px;margin:auto;padding:0 48px 48px}header{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:25px 0;border-bottom:1px solid var(--line)}
+.brand{font-size:21px;font-weight:750;letter-spacing:-.7px}.brand:before{content:"A";display:inline-grid;place-items:center;background:var(--accent);color:#102b26;border-radius:9px;width:34px;height:36px;margin-right:12px}.tag,.eyebrow{font-size:12px;color:var(--muted);letter-spacing:1px}.tag{border:1px solid var(--line);padding:6px 12px;border-radius:30px}
+h1{font-size:clamp(30px,4vw,50px);line-height:1.12;letter-spacing:-1.8px;margin:0 0 18px;font-weight:600}h2{font-size:21px;margin:0 0 15px;letter-spacing:-.4px}p{margin:10px 0}.hero{padding:48px 0 18px}.lead{max-width:70ch;color:var(--muted)}.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:28px;margin:22px 0}.decision{border-left:4px solid var(--accent);background:linear-gradient(110deg,#17312f,#121c2c 75%)}.decision>p:first-of-type{font-size:22px;max-width:65ch;line-height:1.5}
+a{color:var(--accent)}.button,button{display:inline-block;border:1px solid var(--accent);border-radius:7px;background:var(--accent);color:#0b2922;padding:12px 20px;font:650 15px/1.5 system-ui;min-height:48px;text-decoration:none;cursor:pointer}.button:hover,button:hover{background:#b2f4e3}a:focus-visible,button:focus-visible,summary:focus-visible,select:focus-visible{outline:3px solid #89baff;outline-offset:4px}
+dl{display:grid;grid-template-columns:1fr 2fr;gap:12px 24px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 monospace;background:#09101c;padding:18px;border-radius:6px}summary{cursor:pointer;min-height:44px;padding:10px 0}footer{color:var(--muted);font-size:12px;margin-top:28px}.skip{position:absolute;left:16px;top:0;transform:translateY(-150%);background:var(--paper);padding:12px;z-index:3}.skip:focus{transform:translateY(0)}form{margin:0}select{display:block;width:min(100%,420px);padding:14px;margin:8px 0;background:#0b1423;color:var(--ink);border:1px solid #52627a;border-radius:6px;font:inherit}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:24px 0}.metric{min-width:0;overflow-wrap:anywhere;border:1px solid var(--line);background:#101a2a;padding:24px;border-radius:10px}.metric strong{display:block;font-size:34px;font-weight:550;letter-spacing:-1px;margin:7px 0}.metric small{color:var(--muted)}.workbench{display:grid;grid-template-columns:1.25fr 1fr;gap:24px;align-items:start}.workbench>.card{margin-top:0}.evidence-item{border-top:1px solid var(--line);padding:14px 0}.evidence-item small{color:var(--muted);overflow-wrap:anywhere;display:block}.timeline{border-left:2px solid #375e61;padding-left:24px;list-style:none}.timeline li{padding:10px 0 18px}.timeline time{display:block;color:var(--muted);font-size:13px}.evidence-item:target{outline:2px solid var(--accent);outline-offset:5px}.claim{border-top:1px solid var(--line);padding:18px 0}.claim small{display:block;color:var(--muted)}.claim a{display:inline-block;padding:6px 10px;margin:8px 8px 0 0;border:1px solid var(--line);border-radius:5px;font-size:12px}.workbench>*{min-width:0}
+@media(min-width:801px) and (max-width:1100px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){main{padding:0 22px 32px}.workbench{grid-template-columns:1fr}.metrics{gap:10px}.metric{padding:18px}.metric strong{font-size:26px}.hero{padding-top:32px}}
+@media(max-width:500px){header{align-items:flex-start;flex-direction:column}.metrics{grid-template-columns:1fr}.metric strong{font-size:30px}.card{padding:20px}dl{grid-template-columns:1fr;gap:5px}dd{margin-bottom:12px}}
 """
 
 
-def page(content: str, status: int = 200) -> HTMLResponse:
+def page(content: str, status: int = 200, active: str = "overview") -> HTMLResponse:
+    navigation = (
+        ("overview", "/", "Command center"),
+        ("cases", "/cases", "Investigations"),
+        ("agents", "/agents", "Agent map"),
+        ("evidence", "/evidence", "Evidence library"),
+        ("activity", "/activity", "Audit trail"),
+        ("actions", "/actions", "Action center"),
+        ("access", "/access", "Access & session"),
+    )
+    nav = '<aside class="shell-nav"><span class="brand">AegisFlow</span><span class="nav-group">WORKSPACE</span>'
+    for key, href, label in navigation:
+        current = ' class="selected" aria-current="page"' if active == key else ""
+        nav += f'<a href="{href}"{current}>{label}</a>'
+    nav += '<div class="nav-foot">AegisFlow AI<br>Local · Synthetic data</div></aside>'
+    label = next((label for key, _, label in navigation if key == active), "Workspace")
     return HTMLResponse(
         """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>AegisFlow AI · Evidence workspace</title>
-<link rel="stylesheet" href="/auth/style.css"></head><body><a class="skip" href="#content">Skip to content</a>
-<aside class="sidebar"><a class="brand" href="/"><b>A</b>AegisFlow<span class="eyebrow"> AI</span></a><nav aria-label="Workspace"><small>Workspace</small><a href="/">Overview</a><a href="/#investigation">Investigation</a><a href="/#capabilities">Capabilities</a></nav><div class="sidebar-bottom"><span class="dot"></span>Local workspace<br>Evidence-led operations<br><br>Development pilot · v0.1</div></aside><main id="content"><header><span class="crumb">Workspace &nbsp; / &nbsp; <strong>Supply intelligence</strong></span><span class="tag">Synthetic environment</span></header>"""
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>"""
+        + escape(label)
+        + """ · AegisFlow AI</title>
+<link rel="stylesheet" href="/auth/style.css"><script src="/auth/workspace.js" defer></script></head><body><a class="skip" href="#content">Skip to content</a>
+"""
+        + nav
+        + """<main id="content"><header><span class="top-path">Control &nbsp; / &nbsp; <strong>"""
+        + escape(label)
+        + """</strong></span><div class="top-tools">"""
+        + (
+            '<label class="sr-only" for="workspace-search">Search agents</label><input class="searchbox" id="workspace-search" type="search" placeholder="Search agents, capabilities…">'
+            if active == "agents"
+            else ""
+        )
+        + """<span class="tag">Local pilot</span></div></header>"""
         + content
         + "<footer>Deterministic investigation · No model calls · No external business actions</footer></main></body></html>",
         status_code=status,
         headers={
-            "Content-Security-Policy": "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+            "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
             "Referrer-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store",
@@ -43,64 +81,238 @@ def page(content: str, status: int = 200) -> HTMLResponse:
     )
 
 
-def capability_panel() -> str:
-    return '<section id="capabilities" class="card workspace-note"><div><span class="eyebrow">Development status</span><h2>Selective intelligence. Visible boundaries.</h2><p>36 roles registered · 1 capability subset implemented · 1 tested subset.<br>A21 handles synthetic elapsed-time SLA analysis. Other specialist roles are planned.</p></div><span class="pill">Deterministic baseline</span></section>'
+def order_name(case: Case) -> str:
+    order = next((e for e in case.evidence if e.evidence_id.endswith(":order")), None)
+    return str(order.snapshot.get("order_id", "Unknown order")) if order else "Unknown order"
 
 
-def overview_map() -> str:
-    return '<div class="map"><div class="map-top"><div><h2>Investigation pathway</h2><p>The available workflow, before a case is run</p></div><span class="pill">Ready to run</span></div><div class="graph"><article class="node"><span class="node-code">01 / INPUT</span><strong>Purchase order</strong><p>PO-001 · Synthetic scenario<br>Fixed investigation time</p></article><div class="connector" aria-hidden="true"></div><article class="node"><span class="node-code">A21 / ANALYSIS</span><strong>Delivery &amp; SLA</strong><p>Elapsed-time rules<br>Evidence-linked findings</p></article><div class="connector" aria-hidden="true"></div><div class="sources"><div class="source">Order &amp; delivery events</div><div class="source">Supplier SLA</div><div class="source">Inventory &amp; procedure</div></div></div><div class="map-caption"><span><span class="dot"></span>Available capability</span><span>0 model calls</span><span>Read-only source analysis</span></div></div>'
-
-
-def evidence_map(case: Case) -> str:
-    sources = "".join(
-        '<details class="source"><summary>'
-        + escape(item.source_uri.rsplit("/", 1)[-1].replace("_", " ").title().replace("Sla", "SLA"))
-        + "</summary><small>"
-        + escape(item.source_uri)
-        + "<br>Version "
-        + escape(item.source_version)
-        + "</small><pre>"
-        + escape(item.model_dump_json(indent=2))
-        + "</pre></details>"
-        for item in case.evidence
-    )
+def case_table(cases: tuple[Case, ...]) -> str:
+    if not cases:
+        return '<p class="empty">No matching investigations. Choose an order above to start a case.</p>'
+    rows = ""
+    for case in cases:
+        decision = triage(case)
+        values = {c.code: c.value for c in case.claims}
+        rows += (
+            '<tr><td><a href="/cases/'
+            + escape(case.case_id, quote=True)
+            + '">'
+            + escape(order_name(case))
+            + "</a><small>"
+            + escape(case.case_id)
+            + '</small></td><td><span class="status">'
+            + escape(case.status.replace("_", " ").title())
+            + "</span></td><td>"
+            + escape(str(values.get("DELIVERY_DELAY", "Unresolved")))
+            + "</td><td>"
+            + escape(decision.disposition.replace("_", " ").title())
+            + "</td><td>"
+            + escape(case.created_at.isoformat())
+            + "</td></tr>"
+        )
     return (
-        '<section class="map" aria-label="Evidence map"><div class="map-top"><div><h2>Evidence map</h2><p>Trace this investigation back to its captured sources. Open a source to inspect it.</p></div><span class="pill">Persisted case</span></div>'
-        + '<div class="stats"><div class="stat"><strong>'
-        + str(len(case.evidence))
-        + '</strong><span>Evidence snapshots</span></div><div class="stat"><strong>'
-        + str(len(case.claims))
-        + '</strong><span>Source-linked findings</span></div><div class="stat"><strong>'
-        + str(len(case.active_roles))
-        + '</strong><span>Activated roles</span></div><div class="stat"><strong>'
-        + str(case.model_calls)
-        + "</strong><span>Model calls</span></div></div>"
-        + '<div class="graph"><article class="node"><span class="node-code">CASE / SYNTHETIC</span><strong>Supplier delivery</strong><p>'
-        + escape(case.status)
-        + "</p><small>"
-        + escape(case.source_version)
-        + '</small></article><div class="connector" aria-hidden="true"></div><article class="node"><span class="node-code">'
-        + escape(" · ".join(case.active_roles))
-        + '</span><strong>SLA investigation</strong><p>Deterministic analysis<br>Source snapshots preserved</p></article><div class="connector" aria-hidden="true"></div><div class="sources">'
-        + sources
-        + '</div></div><div class="map-caption"><span><span class="dot"></span>Captured evidence</span><span>Case → active role → source snapshots</span></div></section>'
+        '<div class="table-scroll"><table><thead><tr><th>Order / case</th><th>Status</th><th>Delay (seconds)</th><th>Next step</th><th>Created at</th></tr></thead><tbody>'
+        + rows
+        + "</tbody></table></div>"
     )
 
 
-def csrf_form(session_csrf: str, action: str, label: str) -> str:
+def dashboard(cases: tuple[Case, ...]) -> str:
+    decisions = [triage(case) for case in cases]
+    escalate = sum(d.disposition == "ESCALATE" for d in decisions)
+    gaps = sum(d.disposition == "COLLECT_EVIDENCE" for d in decisions)
+    return (
+        '<div class="metrics"><article class="metric"><small>VISIBLE INVESTIGATIONS</small><strong>'
+        + str(len(cases))
+        + "</strong><small>Latest authorized case page</small></article>"
+        + '<article class="metric"><small>ESCALATION RECOMMENDED</small><strong>'
+        + str(escalate)
+        + "</strong><small>Cases exceeding supplier terms</small></article>"
+        + '<article class="metric"><small>EVIDENCE GAPS</small><strong>'
+        + str(gaps)
+        + "</strong><small>Cases requiring more information</small></article></div>"
+        + '<div class="quick-links"><a class="button" href="/cases">New investigation ↗</a><a href="/evidence">Browse evidence</a><a href="/activity">Review audit trail</a></div>'
+        + '<section class="card"><h2>Recent investigations</h2>'
+        + case_table(cases[:10])
+        + '</section><div class="workbench"><section class="card"><h2>How to use this workspace</h2><ol><li>Choose a synthetic purchase order in Investigations.</li><li>Run the evidence and SLA checks.</li><li>Review the recommendation and its source records.</li><li>Reopen the case from history and trace its audit events.</li></ol></section><section class="card"><h2>Current capability</h2><p>A21 · Supplier SLA analysis</p><p class="lead">Five synthetic scenarios exercise late delivery, on-time delivery, missing SLA, conflicting records and an outstanding delivery.</p><a href="/agents">Explore the agent map ↗</a></section></div>'
+    )
+
+
+def case_workbench(case: Case) -> str:
+    values = {claim.code: claim.value for claim in case.claims}
+    delay = values.get("DELIVERY_DELAY")
+    hours = f"{float(delay) / 3600:g} h" if isinstance(delay, (int, float)) else "Unresolved"
+    breach = values.get("SLA_BREACH")
+    sla = "Breached" if breach is True else "Within SLA" if breach is False else "Unresolved"
+    metrics = (
+        '<div class="metrics"><article class="metric"><small>DELIVERY DELAY</small><strong>'
+        + escape(hours)
+        + "</strong><small>Elapsed time beyond promise</small></article>"
+        + '<article class="metric"><small>SUPPLIER SLA</small><strong>'
+        + sla
+        + "</strong><small>Based on captured supplier terms</small></article>"
+        + '<article class="metric"><small>EVIDENCE</small><strong>'
+        + str(len(case.evidence))
+        + "</strong><small>Preserved source snapshots</small></article></div>"
+    )
+    sources = ""
+    for item in case.evidence:
+        name = item.source_uri.rsplit("/", 1)[-1].replace("_", " ").title().replace("Sla", "SLA")
+        sources += (
+            '<details class="evidence-item" id="'
+            + escape(item.evidence_id, quote=True)
+            + '"><summary>'
+            + escape(name)
+            + "</summary><small>"
+            + escape(item.source_uri)
+            + "<br>Version: "
+            + escape(item.source_version)
+            + "<br>SHA-256: "
+            + escape(item.checksum)
+            + "</small><pre>"
+            + escape(item.model_dump_json(indent=2))
+            + "</pre></details>"
+        )
+    findings = ""
+    for claim in case.claims:
+        findings += (
+            '<article class="claim"><strong>'
+            + escape(claim.code.replace("_", " ").title())
+            + "</strong><small>"
+            + escape(str(claim.value))
+            + "</small>"
+        )
+        for ref in claim.evidence_refs:
+            findings += (
+                '<a href="#'
+                + escape(ref, quote=True)
+                + '">'
+                + escape(ref.rsplit(":", 1)[-1])
+                + "</a>"
+            )
+        findings += "</article>"
+    order = next((e.snapshot for e in case.evidence if e.evidence_id.endswith(":order")), {})
+    timeline = '<ol class="timeline">'
+    for label, value in (
+        ("Order placed", order.get("placed_at")),
+        ("Promised delivery", order.get("promised_at")),
+        ("Investigation cutoff", case.as_of.isoformat()),
+    ):
+        timeline += "<li>" + label + "<time>" + escape(str(value or "Unavailable")) + "</time></li>"
+    timeline += "</ol>"
+    return (
+        metrics
+        + '<div class="workbench"><section class="card"><h2>What the evidence establishes</h2>'
+        + findings
+        + "<h2>Investigation timeline</h2>"
+        + timeline
+        + '</section><section class="card"><h2>Source evidence</h2><p class="lead">Follow a finding to its source. Open a record to inspect the captured data.</p>'
+        + sources
+        + "</section></div>"
+    )
+
+
+def csrf_form(
+    session_csrf: str, action: str, label: str, orders: tuple[str, ...] | None = None
+) -> str:
+    selection = ""
+    if orders is not None:
+        selection = (
+            '<label for="order">Purchase order</label><select id="order" name="order_id" required>'
+        )
+        selection += "".join(
+            f'<option value="{escape(order, quote=True)}">{escape(order)}</option>'
+            for order in orders
+        )
+        selection += "</select><p>Investigation time: 1 November 2026, 18:00 UTC (synthetic scenario clock).</p>"
     return (
         f'<form method="post" action="{action}"><input type="hidden" name="csrf" value="{escape(session_csrf, quote=True)}">'
-        f'<input type="hidden" name="key" value="ui-{secrets.token_hex(12)}"><button type="submit">{label}</button></form>'
+        f'<input type="hidden" name="key" value="ui-{secrets.token_hex(12)}">{selection}<button type="submit">{label}</button></form>'
+    )
+
+
+def report(case: Case, extra: str = "") -> HTMLResponse:
+    decision = triage(case)
+    recommendation = (
+        '<section class="card decision"><span class="eyebrow">RECOMMENDED NEXT STEP</span><h2>'
+        + escape(decision.disposition.replace("_", " ").title())
+        + "</h2><p>"
+        + escape(decision.next_step)
+        + "</p><p>"
+        + escape(decision.rationale)
+        + "</p><ul>"
+        + "".join("<li>" + escape(item) + "</li>" for item in decision.missing_evidence)
+        + "</ul><details><summary>Decision evidence and policy</summary><pre>"
+        + escape(decision.model_dump_json(indent=2))
+        + "</pre></details><p>Recommendation only. No supplier has been contacted.</p></section>"
+    )
+    values = {claim.code: claim.value for claim in case.claims}
+    details = "".join(
+        f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
+        for label, value in (
+            ("Status", case.status),
+            ("Case ID", case.case_id),
+            ("Delay (seconds)", values.get("DELIVERY_DELAY", "Unknown")),
+            ("SLA breach", values.get("SLA_BREACH", "Unknown")),
+            ("Evidence snapshots", len(case.evidence)),
+        )
+    )
+    return page(
+        '<section class="hero" id="investigation"><h1>Investigation complete.</h1><p class="lead">Evidence-backed supplier investigation</p></section>'
+        + recommendation
+        + case_workbench(case)
+        + '<section class="card"><h2>Findings</h2><dl>'
+        + details
+        + "</dl><details><summary>View source-linked report</summary><pre>"
+        + escape(case.model_dump_json(indent=2))
+        + '</pre></details></section><a href="/cases">Back to investigations</a>'
+        + extra,
+        active="cases",
     )
 
 
 def mount_login(
-    app: FastAPI, flow: BrowserLogin, investigate: Callable[[Scope, str], Case]
+    app: FastAPI,
+    flow: BrowserLogin,
+    investigate: Callable[[Scope, str, str], Case],
+    available_orders: Callable[[Scope], tuple[str, ...]],
+    list_cases: Callable[[Scope, int], tuple[Case, ...]],
+    read_case: Callable[[Scope, str], Case],
+    read_events: Callable[[Scope, str], tuple[AuditEvent, ...]],
+    read_action: Callable[[Scope, str], Action | None],
+    change_action: Callable[[Scope, str, str, str | None], Action],
 ) -> None:
+    @app.exception_handler(HTTPException)
+    async def browser_auth_error(request: Request, error: HTTPException) -> Response:
+        if (
+            error.status_code == 401
+            and request.url.path in ("/demo/investigate", "/auth/logout")
+            or (error.status_code == 401 and request.url.path.startswith("/actions/"))
+        ):
+            target = (
+                "/access"
+                if request.url.path == "/auth/logout"
+                else "/cases"
+                if request.url.path == "/demo/investigate"
+                else request.url.path
+            )
+            return page(
+                '<section class="hero"><h1>Your session has ended.</h1><p class="lead">Sign in again, then review and submit your request. Nothing was automatically retried.</p><a class="button" href="/auth/login?'
+                + escape(urlencode({"next": target}), quote=True)
+                + '">Sign in again</a></section>',
+                401,
+            )
+        return await http_exception_handler(request, error)
+
     def current(request: Request) -> tuple[Scope, Session]:
         try:
             return flow.user(request.cookies.get(COOKIE))
         except Unauthenticated as error:
+            if request.method == "GET":
+                raise HTTPException(
+                    303,
+                    headers={"Location": "/auth/login?" + urlencode({"next": request.url.path})},
+                ) from error
             raise HTTPException(401, detail="UNAUTHENTICATED") from error
 
     def form(request: Request, payload: bytes) -> dict[str, str]:
@@ -113,41 +325,319 @@ def mount_login(
         ):
             raise HTTPException(400, detail="INVALID_FORM")
         data = parse_qs(payload.decode("utf-8", errors="replace"), keep_blank_values=True)
-        if set(data) != {"csrf", "key"} or any(len(v) != 1 for v in data.values()):
+        allowed = (
+            ({"csrf", "key"}, {"csrf", "key", "order_id"})
+            if request.url.path == "/demo/investigate"
+            else ({"csrf", "key"},)
+        )
+        if request.url.path.startswith("/actions/"):
+            allowed = ({"csrf", "key", "operation", "content_digest"},)
+        if set(data) not in allowed or any(len(v) != 1 for v in data.values()):
             raise HTTPException(400, detail="INVALID_FORM")
         return {key: value[0] for key, value in data.items()}
 
     @app.get("/auth/style.css")
     def style() -> Response:
-        return Response(CSS, media_type="text/css", headers={"X-Content-Type-Options": "nosniff"})
+        return Response(
+            CSS + WORKSPACE_CSS,
+            media_type="text/css",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+
+    @app.get("/auth/workspace.js")
+    def workspace_script() -> Response:
+        return Response(
+            WORKSPACE_JS,
+            media_type="text/javascript",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         try:
-            scope, session = flow.user(request.cookies.get(COOKIE))
+            scope, _ = flow.user(request.cookies.get(COOKIE))
         except Unauthenticated:
             response = page(
-                '<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Investigate with evidence.</h1><p class="lead">Sign in to explore a synthetic supplier delivery delay, its source evidence and deterministic SLA result.</p></section><section class="card" id="investigation"><h2>Start your local session</h2><p>Your password is entered only on the local Keycloak page.</p><a class="button" href="/auth/login">Sign in with Keycloak</a></section>'
-                + overview_map()
-                + capability_panel()
+                '<section class="hero" id="investigation"><h1>Investigate with evidence.</h1><p class="lead">Sign in to explore a synthetic supplier delivery delay, its source evidence and deterministic SLA result.</p></section><section class="card"><h2>Start your local session</h2><p>Your password is entered only on the local Keycloak page.</p><a class="button" href="/auth/login">Sign in with Keycloak</a></section>'
             )
             response.delete_cookie(COOKIE, path="/")
             return response
+        cases = list_cases(scope, 0)
         return page(
-            f'<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Ready to investigate.</h1><p class="lead">Signed in as {escape(scope.subject_id)}. This pilot uses synthetic order PO-001.</p></section><section class="card" id="investigation"><h2>Supplier delivery delay</h2><p>Read the order, delivery, stock, SLA and procedure evidence. Every finding links to a source snapshot.</p>'
-            + csrf_form(session.csrf, "/demo/investigate", "Investigate demo case")
+            '<section class="hero"><span class="eyebrow">OPERATIONS WORKSPACE</span><h1>Ready to investigate.</h1><p class="lead">Track supplier exceptions, review evidence and decide what needs attention.</p></section>'
+            + dashboard(cases)
+        )
+
+    @app.get("/agents", response_class=HTMLResponse)
+    def agents() -> HTMLResponse:
+        return page(agent_map(), active="agents")
+
+    @app.get("/cases", response_class=HTMLResponse)
+    def case_list(request: Request, q: str = "", status: str = "", offset: int = 0) -> HTMLResponse:
+        scope, session = current(request)
+        if not 0 <= offset <= 100000 or status not in ("", "COMPLETED", "NEEDS_EVIDENCE"):
+            raise HTTPException(422, detail="INVALID_PAGE")
+        cases = list_cases(scope, offset)
+        filtered = tuple(
+            c
+            for c in cases
+            if (not status or c.status == status)
+            and q.lower() in (c.case_id + order_name(c)).lower()
+        )
+        options = "".join(
+            '<option value="'
+            + value
+            + '"'
+            + (" selected" if value == status else "")
+            + ">"
+            + label
+            + "</option>"
+            for value, label in (
+                ("", "All statuses"),
+                ("COMPLETED", "Completed"),
+                ("NEEDS_EVIDENCE", "Needs evidence"),
+            )
+        )
+        return page(
+            '<section class="hero"><h1>Investigations</h1><p class="lead">Create a case, review a result, or return to a previous investigation.</p></section>'
+            + '<section class="card launch-panel" id="investigation"><h2>New investigation</h2>'
+            + csrf_form(
+                session.csrf, "/demo/investigate", "Investigate demo case", available_orders(scope)
+            )
+            + '</section><section class="card"><h2>Case history</h2>'
+            + '<form method="get" class="filters"><label>Find a case<input name="q" placeholder="Order or case ID" value="'
+            + escape(q, quote=True)
+            + '"></label>'
+            + '<div><label for="case-status">Status</label><select id="case-status" name="status">'
+            + options
+            + "</select></div><button>Filter cases</button></form>"
+            + case_table(filtered)
             + "</section>"
-            + overview_map()
-            + '<section class="card"><h2>Session</h2><p>Sign out here, then confirm on Keycloak to end its login session too.</p>'
+            + f'<p class="lead">Page {offset // 100 + 1} · Up to 100 stored cases per page, filtered by your source access.</p>'
+            + (
+                f'<a class="button" href="/cases?{escape(urlencode({"offset": max(0, offset - 100), "q": q, "status": status}), quote=True)}">Previous page</a> '
+                if offset
+                else ""
+            )
+            + f'<a class="button" href="/cases?{escape(urlencode({"offset": min(100000, offset + 100), "q": q, "status": status}), quote=True)}">Next page</a>',
+            active="cases",
+        )
+
+    @app.get("/cases/{case_id}", response_class=HTMLResponse)
+    def case_detail(case_id: str, request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        case = read_case(scope, case_id)
+        link = (
+            '<section class="card"><h2>Next: controlled action</h2><p>Review a synthetic procurement action and its exact approval content.</p><a class="button" href="/actions/'
+            + escape(case_id, quote=True)
+            + '">Open action review</a></section>'
+        )
+        return report(case, link)
+
+    @app.get("/evidence", response_class=HTMLResponse)
+    def evidence_library(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        rows = "".join(
+            '<tr><td><a href="/cases/'
+            + escape(c.case_id, quote=True)
+            + "#"
+            + escape(e.evidence_id, quote=True)
+            + '">'
+            + escape(order_name(c))
+            + "</a></td><td>"
+            + escape(e.source_uri)
+            + "</td><td>"
+            + escape(e.source_version)
+            + "</td><td><code>"
+            + escape(e.checksum[:16])
+            + "…</code></td></tr>"
+            for c in cases
+            for e in c.evidence
+        )
+        return page(
+            '<section class="hero"><h1>Evidence library</h1><p class="lead">Captured records from your latest authorized case page. Open a case to inspect the full snapshot.</p></section>'
+            + '<section class="card table-scroll"><table><thead><tr><th>Order / case</th><th>Source</th><th>Version</th><th>SHA-256 preview</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="evidence",
+        )
+
+    @app.get("/activity", response_class=HTMLResponse)
+    def activity(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        events = sorted(
+            (e for c in cases for e in read_events(scope, c.case_id)),
+            key=lambda e: (e.occurred_at, e.revision),
+            reverse=True,
+        )
+        rows = "".join(
+            "<tr><td>"
+            + escape(e.occurred_at.isoformat())
+            + "</td><td>"
+            + escape(e.event_type)
+            + '</td><td><a href="/cases/'
+            + escape(e.case_id, quote=True)
+            + '">'
+            + escape(e.case_id)
+            + "</a></td><td>"
+            + str(e.revision)
+            + "</td></tr>"
+            for e in events
+        )
+        return page(
+            '<section class="hero"><h1>Audit trail</h1><p class="lead">Persisted investigation events from your latest authorized case page.</p></section><section class="card table-scroll"><table><thead><tr><th>Occurred at</th><th>Event</th><th>Case</th><th>Revision</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="activity",
+        )
+
+    @app.get("/actions", response_class=HTMLResponse)
+    def actions_index(request: Request) -> HTMLResponse:
+        scope, _ = current(request)
+        cases = list_cases(scope, 0)
+        rows = ""
+        for case in cases:
+            action = read_action(scope, case.case_id)
+            if action is not None or triage(case).disposition == "ESCALATE":
+                rows += (
+                    '<tr><td><a href="/actions/'
+                    + escape(case.case_id, quote=True)
+                    + '">'
+                    + escape(order_name(case))
+                    + "</a></td><td>"
+                    + (action.status if action else "ELIGIBLE FOR PROPOSAL")
+                    + "</td><td>"
+                    + escape(case.case_id)
+                    + "</td></tr>"
+                )
+        return page(
+            '<section class="hero"><h1>Action center</h1><p class="lead">Review exact content, approve it and record one synthetic execution. No supplier is contacted.</p></section><section class="card table-scroll"><table><thead><tr><th>Order</th><th>Workflow state</th><th>Case</th></tr></thead><tbody>'
+            + rows
+            + "</tbody></table></section>",
+            active="actions",
+        )
+
+    @app.get("/actions/{case_id}", response_class=HTMLResponse)
+    def action_review(case_id: str, request: Request) -> HTMLResponse:
+        scope, session = current(request)
+        case = read_case(scope, case_id)
+        action = read_action(scope, case_id)
+        content = (
+            '<section class="hero"><h1>Controlled action review</h1><p class="lead">Synthetic procurement review · '
+            + escape(order_name(case))
+            + "</p></section>"
+        )
+        if action is None:
+            content += (
+                '<section class="card"><h2>No action proposal yet</h2><p>'
+                + escape(triage(case).rationale)
+                + "</p></section>"
+            )
+            operation, label = "propose", "Prepare action proposal"
+        else:
+            content += (
+                '<section class="card"><h2>'
+                + action.status
+                + "</h2><h3>Request procurement review</h3><p>"
+                + escape(action.payload.message)
+                + "</p><dl><dt>Purchase order</dt><dd>"
+                + escape(action.payload.order_id)
+                + "</dd><dt>Destination</dt><dd>Local synthetic procurement queue</dd>"
+                + "<dt>Supporting evidence</dt><dd>"
+                + str(len(action.payload.evidence_refs))
+                + " captured records</dd>"
+                + "<dt>Proposed by</dt><dd>"
+                + escape(action.proposed_by)
+                + "</dd>"
+                + "<dt>Approved by</dt><dd>"
+                + escape(action.approved_by or "Awaiting approval")
+                + "</dd></dl>"
+                + "<p>Approval authorizes this exact review request. No supplier will be contacted.</p>"
+                + "<details><summary>Exact content and integrity record</summary><pre>"
+                + escape(action.payload.model_dump_json(indent=2))
+                + "</pre><p>Content SHA-256</p><pre>"
+                + action.content_digest
+                + "</pre></details>"
+            )
+            if action.receipt_id:
+                content += (
+                    "<p>Verified synthetic queue receipt</p><pre>"
+                    + escape(action.receipt_id)
+                    + "</pre>"
+                )
+            content += "</section>"
+            operation, label = (
+                ("approve", "Approve this exact action")
+                if action.status == "PROPOSED"
+                else ("execute", "Execute synthetic action")
+            )
+        permission = {"propose": "investigate", "approve": "approve", "execute": "execute"}[
+            operation
+        ]
+        if action is None and triage(case).disposition != "ESCALATE":
+            content += "<p>Resolve the evidence or SLA outcome before proposing an action.</p>"
+        elif action and action.status == "EXECUTED":
+            content += (
+                "<p>Execution is complete. Repeated execution requests return the same receipt.</p>"
+            )
+        elif permission in scope.permissions:
+            content += (
+                '<form method="post" action="/actions/'
+                + escape(case_id, quote=True)
+                + '"><input type="hidden" name="csrf" value="'
+                + escape(session.csrf, quote=True)
+                + '"><input type="hidden" name="key" value="action"><input type="hidden" name="operation" value="'
+                + operation
+                + '"><input type="hidden" name="content_digest" value="'
+                + (action.content_digest if action else "")
+                + '"><button type="submit">'
+                + label
+                + "</button></form>"
+            )
+        else:
+            content += (
+                "<p>Your account does not have the permission required for the next step.</p>"
+            )
+        content += (
+            '<p><a href="/cases/'
+            + escape(case_id, quote=True)
+            + '">Return to investigation</a></p>'
+        )
+        return page(content, active="actions")
+
+    @app.post("/actions/{case_id}")
+    async def action_submit(case_id: str, request: Request) -> Response:
+        data = form(request, await request.body())
+        scope, session = await run_in_threadpool(current, request)
+        if not secrets.compare_digest(session.csrf.encode(), data["csrf"].encode()):
+            raise HTTPException(403, detail="CSRF_DENIED")
+        await run_in_threadpool(
+            change_action, scope, case_id, data["operation"], data["content_digest"] or None
+        )
+        return RedirectResponse("/actions/" + case_id, status_code=303)
+
+    @app.get("/access", response_class=HTMLResponse)
+    def access_page(request: Request) -> HTMLResponse:
+        scope, session = current(request)
+        return page(
+            '<section class="hero"><h1>Access &amp; session</h1></section><section class="card"><h2>Current identity</h2><p>Subject: '
+            + escape(scope.subject_id)
+            + "</p><p>Tenant: "
+            + escape(scope.tenant_id)
+            + "</p><p>Permissions: "
+            + escape(", ".join(sorted(scope.permissions)))
+            + "</p>"
             + csrf_form(session.csrf, "/auth/logout", "Sign out")
-            + "</section>"
-            + capability_panel()
+            + "</section>",
+            active="access",
         )
 
     @app.get("/auth/login")
-    def login() -> RedirectResponse:
+    def login(next: str = "/") -> RedirectResponse:
         try:
-            location, binding = flow.begin()
+            location, binding = flow.begin(next)
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
         response = RedirectResponse(location, status_code=303)
@@ -164,7 +654,7 @@ def mount_login(
             or "error" in fields
         ):
             return page(
-                '<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Sign-in did not complete.</h1><p>Please start a new sign-in.</p><a href="/">Return to the pilot</a></section>',
+                '<section class="hero"><h1>Sign-in did not complete.</h1><p>Please start a new sign-in.</p><a href="/">Return to the pilot</a></section>',
                 400,
             )
         try:
@@ -173,51 +663,33 @@ def mount_login(
             )
         except LoginRejected:
             return page(
-                '<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Sign-in could not be verified.</h1><p>Start again from this browser.</p><a href="/">Return to the pilot</a></section>',
+                '<section class="hero"><h1>Sign-in could not be verified.</h1><p>Start again from this browser.</p><a href="/">Return to the pilot</a></section>',
                 400,
             )
         except LoginCapacity as error:
             raise HTTPException(429, detail="LOGIN_CAPACITY") from error
-        response = RedirectResponse("/", status_code=303)
+        response = RedirectResponse(flow.user(sid)[1].return_to, status_code=303)
         response.set_cookie(COOKIE, sid, max_age=600, httponly=True, samesite="lax", path="/")
         response.delete_cookie(BINDING, path="/auth")
         response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     @app.post("/demo/investigate", response_class=HTMLResponse)
-    async def run_demo(request: Request) -> HTMLResponse:
+    async def run_demo(request: Request) -> Response:
         data = form(request, await request.body())
         scope, session = await run_in_threadpool(current, request)
         if not secrets.compare_digest(session.csrf.encode(), data["csrf"].encode()):
             raise HTTPException(403, detail="CSRF_DENIED")
         try:
-            case = await run_in_threadpool(investigate, scope, data["key"])
+            case = await run_in_threadpool(
+                investigate, scope, data["key"], data.get("order_id", "PO-001")
+            )
         except (NotFound, PolicyDenied):
             return page(
                 '<h1>Scenario access denied.</h1><p>This account does not have the required source permissions.</p><a href="/">Return to the pilot</a>',
                 403,
             )
-        values = {claim.code: claim.value for claim in case.claims}
-        details = "".join(
-            f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
-            for label, value in (
-                ("Status", case.status),
-                ("Case ID", case.case_id),
-                ("Delay (seconds)", values.get("DELIVERY_DELAY", "Unknown")),
-                ("SLA breach", values.get("SLA_BREACH", "Unknown")),
-                ("Evidence snapshots", len(case.evidence)),
-            )
-        )
-        return page(
-            '<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Investigation complete.</h1><p class="lead">Synthetic supplier delivery case · Deterministic rules</p></section>'
-            + evidence_map(case)
-            + '<section class="card"><h2>Findings</h2><dl>'
-            + details
-            + "</dl><details><summary>View source-linked report</summary><pre>"
-            + escape(case.model_dump_json(indent=2))
-            + "</pre></details></section>"
-            + '<a href="/">Back to the pilot</a>'
-        )
+        return RedirectResponse("/cases/" + case.case_id, status_code=303)
 
     @app.post("/auth/logout")
     async def logout(request: Request) -> HTMLResponse:
@@ -237,7 +709,7 @@ def mount_login(
             )
         )
         response = page(
-            '<section class="hero"><span class="eyebrow">Operations intelligence</span><h1>Application session ended.</h1><p class="lead">Finish signing out of Keycloak to end its local SSO session too.</p></section>'
+            '<section class="hero"><h1>Application session ended.</h1><p class="lead">Finish signing out of Keycloak to end its local SSO session too.</p></section>'
             + '<section class="card"><a class="button" href="'
             + escape(target, quote=True)
             + '">Finish signing out of Keycloak</a></section><a href="/">Return to the pilot</a>'

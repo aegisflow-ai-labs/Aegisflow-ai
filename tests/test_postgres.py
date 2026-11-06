@@ -408,3 +408,42 @@ def test_jwt_authentication_and_principal_revocation_with_rls(runtime_dsn, tmp_p
         assert client.get("/v1/cases/" + case["case_id"], headers=headers).status_code == 401
         assert client.post("/v1/cases", json=body, headers=headers).status_code == 401
         assert len(store.events(SCOPE, case["case_id"])) == 3
+
+
+def test_case_history_paging_and_tenant_isolation(dsn):
+    migrate(dsn)
+    store = PostgresStore(dsn)
+    cases = [
+        store.run(SCOPE, REQUEST.model_copy(update={"idempotency_key": f"history-{i}"}), generate())
+        for i in range(3)
+    ]
+    listed = PostgresStore(dsn).list_cases(SCOPE)
+    assert {c.case_id for c in listed} == {c.case_id for c in cases}
+    assert store.list_cases(SCOPE, limit=1, offset=1) == listed[1:2]
+    assert store.list_cases(SCOPE.model_copy(update={"tenant_id": "other"})) == ()
+    with pytest.raises(PolicyDenied):
+        store.list_cases(SCOPE.model_copy(update={"permissions": frozenset()}))
+
+
+def test_postgres_action_workflow_concurrency(runtime_dsn):
+    from tests.test_actions import exercise_workflow
+
+    store = PostgresStore(runtime_dsn)
+    store.verify_runtime_role()
+    exercise_workflow(store)
+
+
+def test_postgres_action_insert_rollback(dsn):
+    from tests.test_actions import SCOPE as ACTION_SCOPE
+    from tests.test_actions import make_case
+
+    migrate(dsn)
+    store = PostgresStore(dsn)
+    case = make_case(store)
+    proposal = store.transition_action(ACTION_SCOPE, case.case_id, "propose")
+    store.transition_action(ACTION_SCOPE, case.case_id, "approve", proposal["content_digest"])
+    with connect(dsn) as db:
+        db.execute("ALTER TABLE aegis_events ADD CONSTRAINT fail_execution CHECK (revision < 6)")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        store.transition_action(ACTION_SCOPE, case.case_id, "execute", proposal["content_digest"])
+    assert len(store.events(ACTION_SCOPE, case.case_id)) == 5

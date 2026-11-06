@@ -8,29 +8,45 @@ import sqlite3
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import psycopg
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Request as HTTPRequest
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .access import SourceAccess, SourcePolicy, SourcePolicyUnavailable
-from .contracts import AuditEvent, Case, Contract, Evidence, Identifier, Request, Scenario, Scope
+from .actions import ActionConflict
+from .contracts import (
+    Action,
+    AuditEvent,
+    Case,
+    Contract,
+    Evidence,
+    Identifier,
+    Request,
+    Scenario,
+    Scope,
+)
 from .http_limits import RequestLimits
 from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
 from .login_ui import COOKIE, mount_login
 from .oidc import BrowserLogin
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
+from .triage import Triage, triage
 
 
 class CreateCase(Contract):
     order_id: Identifier
     as_of: AwareDatetime
+
+
+class ActionCommand(Contract):
+    content_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None = None
 
 
 def token_digest(token: str) -> str:
@@ -130,6 +146,10 @@ def create_app(
     async def missing(_: HTTPRequest, __: NotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "NOT_FOUND"})
 
+    @app.exception_handler(ActionConflict)
+    async def action_conflict(_: HTTPRequest, error: ActionConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
     @app.exception_handler(IdempotencyConflict)
     async def conflict(_: HTTPRequest, __: IdempotencyConflict) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": "IDEMPOTENCY_CONFLICT"})
@@ -165,6 +185,93 @@ def create_app(
         policy: Annotated[SourcePolicy, Depends(source_access.load)],
     ) -> Case:
         return investigate_case(body, scope, idempotency_key, policy)
+
+    def available_orders(scope: Scope) -> tuple[str, ...]:
+        Store.authorize(scope, scope.tenant_id, "investigate")
+        policy = source_access.load()
+        orders = []
+        for (tenant, order_id), source in snapshots.items():
+            if tenant != scope.tenant_id:
+                continue
+            try:
+                policy.authorize(scope, source.input_source_uris())
+            except NotFound:
+                continue
+            orders.append(order_id)
+        return tuple(sorted(orders))
+
+    @app.get("/v1/orders", response_model=tuple[str, ...])
+    def orders(scope: Annotated[Scope, Depends(authenticate)]) -> tuple[str, ...]:
+        return available_orders(scope)
+
+    @app.get("/v1/cases/{case_id}/triage", response_model=Triage)
+    def decision(
+        case_id: str,
+        scope: Annotated[Scope, Depends(authenticate)],
+        policy: Annotated[SourcePolicy, Depends(source_access.load)],
+    ) -> Triage:
+        case = store.read(scope, case_id)
+        policy.authorize(scope, case.input_source_uris)
+        return triage(case)
+
+    def visible_cases(scope: Scope, offset: int = 0) -> tuple[Case, ...]:
+        policy = source_access.load()
+        visible = []
+        for case in store.list_cases(scope, offset=offset):
+            try:
+                policy.authorize(scope, case.input_source_uris)
+            except NotFound:
+                continue
+            visible.append(case)
+        return tuple(visible)
+
+    def visible_case(scope: Scope, case_id: str) -> Case:
+        case = store.read(scope, case_id)
+        source_access.load().authorize(scope, case.input_source_uris)
+        return case
+
+    def visible_events(scope: Scope, case_id: str) -> tuple[AuditEvent, ...]:
+        visible_case(scope, case_id)
+        return store.events(scope, case_id)
+
+    def action_read(scope: Scope, case_id: str) -> Action | None:
+        visible_case(scope, case_id)
+        return next(
+            (
+                e.action_record
+                for e in reversed(store.events(scope, case_id))
+                if e.action_record is not None
+            ),
+            None,
+        )
+
+    def action_transition(
+        scope: Scope, case_id: str, operation: str, checksum: str | None
+    ) -> Action:
+        visible_case(scope, case_id)
+        return Action.model_validate(store.transition_action(scope, case_id, operation, checksum))
+
+    @app.get("/v1/cases/{case_id}/action", response_model=Action | None)
+    def action_detail(
+        case_id: str, scope: Annotated[Scope, Depends(authenticate)]
+    ) -> Action | None:
+        return action_read(scope, case_id)
+
+    @app.post("/v1/cases/{case_id}/action/{operation}", response_model=Action)
+    def change_action(
+        case_id: str,
+        operation: Literal["propose", "approve", "execute"],
+        body: ActionCommand,
+        scope: Annotated[Scope, Depends(authenticate)],
+    ) -> Action:
+        return action_transition(scope, case_id, operation, body.content_digest)
+
+    @app.get("/v1/cases", response_model=tuple[Case, ...])
+    def case_index(
+        scope: Annotated[Scope, Depends(authenticate)],
+        offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+    ) -> tuple[Case, ...]:
+        return visible_cases(scope, offset)
 
     @app.get("/v1/cases/{case_id}", response_model=Case)
     def read(
@@ -202,17 +309,27 @@ def create_app(
 
     if browser_login is not None:
 
-        def run_browser_case(scope: Scope, key: str) -> Case:
+        def run_browser_case(scope: Scope, key: str, order_id: str) -> Case:
             return investigate_case(
                 CreateCase(
-                    order_id="PO-001", as_of=datetime.fromisoformat("2026-11-01T18:00:00+00:00")
+                    order_id=order_id, as_of=datetime.fromisoformat("2026-11-01T18:00:00+00:00")
                 ),
                 scope,
                 key,
                 source_access.load(),
             )
 
-        mount_login(app, browser_login, run_browser_case)
+        mount_login(
+            app,
+            browser_login,
+            run_browser_case,
+            available_orders,
+            visible_cases,
+            visible_case,
+            visible_events,
+            action_read,
+            action_transition,
+        )
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1"])
     app.add_middleware(RequestLimits)
     return app

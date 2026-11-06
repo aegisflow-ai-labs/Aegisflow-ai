@@ -1,6 +1,6 @@
 # ADR-010: Evidence workspace
 
-Status: accepted for the local pilot
+Status: historical pilot layout; superseded by ADR-012 and ADR-013. Source escaping and truthful capability reporting remain required.
 
 ## Context
 

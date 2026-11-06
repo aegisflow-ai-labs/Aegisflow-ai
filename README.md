@@ -18,6 +18,7 @@ that have not reached `main` yet.
 ## Implemented capabilities
 
 - Deterministic order/delivery/SLA investigation using seeded synthetic inputs.
+- Five-order browser pilot with tenant/source-filtered selection and evidence-gated operational recommendations.
 - Evidence-linked claims with source versions, immutable snapshots and SHA-256 checksums.
 - Explicit uncertainty for missing, stale or conflicting evidence.
 - Closed Pydantic contracts, versioned JSON Schemas and persisted input dependencies.
@@ -28,6 +29,7 @@ that have not reached `main` yet.
 - Local Keycloak browser login using Authorization Code + S256 PKCE, opaque sessions and CSRF checks.
 - Exact tenant/subject/source grants, request-time ACL reload and live revocation.
 - Idempotent request handling, concurrent replay protection and transaction rollback.
+- Exact-content action proposal/approval and one atomic synthetic execution receipt, recorded in the immutable audit log.
 - HTTP input limits before JSON parsing: 64 KiB body, 16 KiB aggregate header
   names/values, and a five-second total body-read deadline.
 
@@ -205,7 +207,7 @@ concurrency budgets and production deployment remain separate work.
 Next: bounded task routing with deterministic permissions/tool budgets and baseline
 comparison. Production identity acceptance remains a separate deployment gate.
 Real enterprise connectors, a full operational UI, root-cause inference, cost/risk alternatives,
-exact-payload human approval, external-action idempotency, postcondition verification,
+production approval lifecycle, external-action idempotency and external postcondition verification,
 compensation, sealed audit, backup/recovery drills and the 300-case benchmark remain
 planned. No production acceptance or measured PDF target is claimed.
 
@@ -307,7 +309,7 @@ With the helper running, reproduce the browser check:
 ```
 
 For an installed Google Chrome instead of downloading Chromium, set
-`AEGISFLOW_BROWSER_CHANNEL=chrome`. The workspace uses the persisted case to render its evidence map; open a source card to inspect its version, checksum and snapshot. The pre-investigation pathway shows available capability, not a completed run. Screenshots stay under ignored `work/browser-check/`.
+`AEGISFLOW_BROWSER_CHANNEL=chrome`. The Agent map describes available and planned capabilities. Case details show captured evidence; open a source record to inspect its version, checksum and snapshot. A capability preview is not a completed investigation. Screenshots stay under ignored `work/browser-check/`.
 CI runs this same flow against a real Keycloak container in a separate browser job,
 including revocation of an active session, re-login and rejection of its old cookie.
 
@@ -343,3 +345,67 @@ audit trail. Do not run it during somebody else's demo without coordination.
 Existing policy files without the new field remain valid (default zero: no cutoff).
 Older strict parsers reject the new field; rollback must preserve revocation semantics,
 not silently erase it. No database migration is required. See [ADR-009](docs/adr/009-local-identity-lifecycle.md).
+
+## Operational triage pilot
+
+The Keycloak demo now loads five synthetic purchase orders. Select one before
+clicking **Investigate demo case**:
+
+- PO-001: 7-hour delay → procurement escalation recommendation.
+- PO-002: on time → monitor.
+- PO-003: missing SLA → collect evidence.
+- PO-004: conflicting deliveries → collect evidence.
+- PO-005: no delivery recorded, 9 hours overdue → escalation recommendation.
+
+The scenario clock is fixed at **2026-11-01 18:00 UTC**. The case workbench presents delay in hours, SLA status, source-linked findings,
+a timeline and expandable evidence snapshots. The result explains the
+next step and exposes its evidence references and policy version. No supplier is
+contacted. Existing case IDs, source snapshots and audit events remain available.
+Authorized API clients can read the order catalog at `GET /v1/orders` and the
+recommendation at `GET /v1/cases/{case_id}/triage`.
+See [ADR-011](docs/adr/011-operational-triage.md) for policy and scope.
+
+## Workspace navigation
+
+After local sign-in, the command center shows persisted case activity. Use
+**Investigations** to create a case, filter the history and reopen previous
+results. **Agent map**, **Evidence library**, **Audit trail** and **Access &
+session** have separate routes with a visible active navigation state.
+
+Case creation redirects to a stable case URL. Refreshing that URL reads the
+stored result; it does not create another investigation. The API case index is
+`GET /v1/cases?offset=0`. Each page scans at most 100 tenant cases and filters
+them by current source access; dashboard counts and evidence/audit indexes cover
+that page. See [ADR-013](docs/adr/013-persisted-workspace-navigation.md).
+
+## Controlled synthetic actions
+
+An SLA-breach case can now progress through **Action center**:
+
+1. **Prepare action proposal** constructs a fixed synthetic procurement-review payload.
+2. **Approve this exact action** records the human identity, time and payload SHA-256.
+3. **Execute synthetic action** atomically records one synthetic queue receipt.
+
+The local operator must explicitly enable demo approval/execution permissions:
+
+```sh
+.venv/bin/python tools/keycloak_demo.py enable-synthetic-actions
+```
+
+This updates only the configured local demo principal and preserves other grants
+and revocations. Existing users are not automatically granted approval rights.
+The browser smoke test opts in explicitly for its synthetic test account.
+
+API: `GET /v1/cases/{case_id}/action` reads the current state.
+`POST /v1/cases/{case_id}/action/propose` accepts `{}`.
+The `approve` and `execute` routes accept
+`{"content_digest":"<exact SHA-256 from the proposal>"}`.
+Cookie-authenticated writes also require the existing CSRF header.
+
+Missing/conflicting evidence, unauthorized approvals, mismatched content and
+execution before approval are rejected. Concurrent/repeated execution returns
+the same receipt without a second execution event. Execution is a local
+simulation represented by its committed audit record; no supplier, email service
+or enterprise system is contacted. A local operator may hold all demo permissions;
+production separation of duties, approval expiry, cancellation and external
+connector recovery remain future work. See [ADR-014](docs/adr/014-controlled-synthetic-actions.md).

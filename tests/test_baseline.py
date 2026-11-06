@@ -287,17 +287,34 @@ def test_role_registry_reports_only_implemented_subset(store: Store) -> None:
     assert store.run(SCOPE, request(), generate()).active_roles == ("A21",)
 
 
+def test_paged_case_history_tenant_permission_and_reopen(tmp_path):
+    path = tmp_path / "history.db"
+    store = Store(path, clock=lambda: NOW)
+    created = [
+        store.run(SCOPE, request(idempotency_key=f"history-{i}"), generate()) for i in range(3)
+    ]
+    expected = tuple(sorted(created, key=lambda c: c.case_id, reverse=True))
+    assert Store(path).list_cases(SCOPE) == expected
+    assert store.list_cases(SCOPE, limit=1, offset=1) == expected[1:2]
+    other = SCOPE.model_copy(update={"tenant_id": "other"})
+    assert store.list_cases(other) == ()
+    with pytest.raises(PolicyDenied):
+        store.list_cases(SCOPE.model_copy(update={"permissions": frozenset()}))
+    for limit, offset in ((0, 0), (101, 0), (1, -1), (1, 100001)):
+        with pytest.raises(ValueError):
+            store.list_cases(SCOPE, limit=limit, offset=offset)
+
+
 def test_evidence_workspace_escapes_source_content(store: Store) -> None:
-    from aegisflow.login_ui import evidence_map
+    from aegisflow.login_ui import case_workbench
 
     case = store.run(SCOPE, request(), generate())
     unsafe = '<script>alert("source")</script>'
     evidence = case.evidence[0].model_copy(
         update={"source_uri": "synthetic://test/" + unsafe, "snapshot": {"text": unsafe}}
     )
-    rendered = evidence_map(case.model_copy(update={"evidence": (evidence,)}))
+    rendered = case_workbench(case.model_copy(update={"evidence": (evidence,)}))
     assert unsafe not in rendered
     assert "&lt;script&gt;" in rendered
-    assert "<strong>1</strong><span>Evidence snapshots" in rendered
-    assert "<strong>0</strong><span>Model calls" in rendered
-    assert rendered.count('<details class="source">') == 1
+    assert "<strong>1</strong><small>Preserved source snapshots" in rendered
+    assert rendered.count('class="evidence-item"') == 1
