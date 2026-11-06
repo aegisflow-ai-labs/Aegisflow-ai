@@ -303,3 +303,18 @@ def test_paged_case_history_tenant_permission_and_reopen(tmp_path):
     for limit, offset in ((0, 0), (101, 0), (1, -1), (1, 100001)):
         with pytest.raises(ValueError):
             store.list_cases(SCOPE, limit=limit, offset=offset)
+
+
+def test_evidence_workspace_escapes_source_content(store: Store) -> None:
+    from aegisflow.login_ui import case_workbench
+
+    case = store.run(SCOPE, request(), generate())
+    unsafe = '<script>alert("source")</script>'
+    evidence = case.evidence[0].model_copy(
+        update={"source_uri": "synthetic://test/" + unsafe, "snapshot": {"text": unsafe}}
+    )
+    rendered = case_workbench(case.model_copy(update={"evidence": (evidence,)}))
+    assert unsafe not in rendered
+    assert "&lt;script&gt;" in rendered
+    assert "<strong>1</strong><small>Preserved source snapshots" in rendered
+    assert rendered.count('class="evidence-item"') == 1

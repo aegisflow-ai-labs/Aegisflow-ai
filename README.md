@@ -25,6 +25,7 @@ that have not reached `main` yet.
 - Atomic case/audit persistence in SQLite or explicitly configured PostgreSQL.
 - Tenant-aware API access, PostgreSQL RLS and restricted runtime-role checks.
 - Optional signed access-token verification with issuer/audience/time checks and local revocation.
+- Responsive dark evidence workspace with an investigation pathway, case-derived counts and expandable source snapshots.
 - Local Keycloak browser login using Authorization Code + S256 PKCE, opaque sessions and CSRF checks.
 - Exact tenant/subject/source grants, request-time ACL reload and live revocation.
 - Idempotent request handling, concurrent replay protection and transaction rollback.
@@ -308,7 +309,7 @@ With the helper running, reproduce the browser check:
 ```
 
 For an installed Google Chrome instead of downloading Chromium, set
-`AEGISFLOW_BROWSER_CHANNEL=chrome`. Screenshots stay under ignored `work/browser-check/`.
+`AEGISFLOW_BROWSER_CHANNEL=chrome`. The Agent map describes available and planned capabilities. Case details show captured evidence; open a source record to inspect its version, checksum and snapshot. A capability preview is not a completed investigation. Screenshots stay under ignored `work/browser-check/`.
 CI runs this same flow against a real Keycloak container in a separate browser job,
 including revocation of an active session, re-login and rejection of its old cookie.
 

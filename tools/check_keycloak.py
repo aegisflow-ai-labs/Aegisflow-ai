@@ -67,11 +67,15 @@ def main():
         expect(sources).to_have_count(5)
         sources.first.locator("summary").click()
         expect(sources.first.locator("pre")).to_contain_text("PO-001")
+        expect(sources.first.locator("pre")).to_contain_text("checksum")
         sources.first.locator("summary").click()
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(output / "desktop.png"), full_page=True)
         page.set_viewport_size({"width": 375, "height": 812})
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         page.screenshot(path=str(output / "mobile.png"), full_page=True)
+        page.set_viewport_size({"width": 812, "height": 375})
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         case_id = page.locator("dd").nth(1).inner_text()
         for order, expected in (
             ("PO-002", "Monitor"),
