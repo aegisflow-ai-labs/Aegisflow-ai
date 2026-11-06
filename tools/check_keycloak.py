@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 from playwright.sync_api import Error as BrowserError
@@ -173,8 +174,14 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (BrowserError, AssertionError, subprocess.CalledProcessError):
+    except (BrowserError, AssertionError, subprocess.CalledProcessError) as error:
         # Browser diagnostics can include callback URLs or entered values.
+        steps = [
+            frame.lineno
+            for frame in traceback.extract_tb(error.__traceback__)
+            if Path(frame.filename).name == "check_keycloak.py"
+        ]
+        step = steps[-1] if steps else "unknown"
         raise SystemExit(
-            "FAIL: local browser flow; no credentials or callback diagnostics emitted"
+            f"FAIL: browser check line {step}; credentials and callback diagnostics suppressed"
         ) from None
