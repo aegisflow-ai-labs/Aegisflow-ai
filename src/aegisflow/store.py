@@ -9,7 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from .contracts import AuditEvent, Case, Request, Scenario, Scope
-from .engine import digest, investigate
+from .engine import digest
+from .workflow import investigate
 
 
 class PolicyDenied(Exception):

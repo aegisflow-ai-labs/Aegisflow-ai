@@ -447,3 +447,20 @@ def test_postgres_action_insert_rollback(dsn):
     with pytest.raises(psycopg.errors.CheckViolation):
         store.transition_action(ACTION_SCOPE, case.case_id, "execute", proposal["content_digest"])
     assert len(store.events(ACTION_SCOPE, case.case_id)) == 5
+
+
+def test_postgres_workflow_trace_and_budget_rollback(runtime_dsn, monkeypatch):
+    from aegisflow.workflow import WorkflowBudgetExceeded
+
+    store = PostgresStore(runtime_dsn)
+    case = store.run(SCOPE, REQUEST, generate())
+    assert case.workflow is not None and case.workflow.version == "bounded-supply-v1"
+    assert PostgresStore(runtime_dsn).read(SCOPE, case.case_id) == case
+
+    def rejected(*args):
+        raise WorkflowBudgetExceeded("PLAN_EXCEEDS_BUDGET")
+
+    monkeypatch.setattr("aegisflow.postgres.investigate", rejected)
+    with pytest.raises(WorkflowBudgetExceeded):
+        store.run(SCOPE, REQUEST.model_copy(update={"idempotency_key": "rejected"}), generate())
+    assert len(store.list_cases(SCOPE)) == 1

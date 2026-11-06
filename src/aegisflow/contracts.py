@@ -121,6 +121,47 @@ class Task(Contract):
     max_source_bytes: Literal[1000000] = 1000000
 
 
+class WorkflowLimits(Contract):
+    max_steps: Annotated[int, Field(strict=True, ge=1, le=8)] = 3
+    max_tool_calls: Annotated[int, Field(strict=True, ge=0, le=1)] = 1
+    max_source_bytes: Annotated[int, Field(strict=True, ge=1, le=1000000)] = 1000000
+    deadline_ms: Annotated[int, Field(strict=True, ge=1, le=60000)] = 5000
+    allowed_tools: tuple[Literal["read_synthetic_snapshot"], ...] = ("read_synthetic_snapshot",)
+
+
+class WorkflowStep(Contract):
+    name: Literal["SOURCE_CHECK", "SLA_ANALYSIS", "TRIAGE"]
+    status: Literal["COMPLETED"] = "COMPLETED"
+    tool_calls: Annotated[int, Field(strict=True, ge=0, le=1)] = 0
+
+
+class WorkflowRun(Contract):
+    version: Literal["bounded-supply-v1"] = "bounded-supply-v1"
+    limits: WorkflowLimits
+    source_checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    source_bytes: Annotated[int, Field(strict=True, ge=1)]
+    steps: tuple[WorkflowStep, ...]
+    disposition: Literal["ESCALATE", "MONITOR", "COLLECT_EVIDENCE"]
+    model_calls: Literal[0] = 0
+
+    @model_validator(mode="after")
+    def budgets(self) -> "WorkflowRun":
+        if tuple(s.name for s in self.steps) != ("SOURCE_CHECK", "SLA_ANALYSIS", "TRIAGE"):
+            raise ValueError("Unexpected workflow plan")
+        if (
+            len(self.steps) > self.limits.max_steps
+            or sum(s.tool_calls for s in self.steps) > self.limits.max_tool_calls
+            or self.source_bytes > self.limits.max_source_bytes
+        ):
+            raise ValueError("Workflow budget exceeded")
+        if (
+            tuple(s.tool_calls for s in self.steps) != (1, 0, 0)
+            or "read_synthetic_snapshot" not in self.limits.allowed_tools
+        ):
+            raise ValueError("Invalid workflow tool trace")
+        return self
+
+
 class Case(Contract):
     case_id: Identifier
     tenant_id: Identifier
@@ -138,9 +179,12 @@ class Case(Contract):
     uncertainty: tuple[str, ...]
     active_roles: tuple[Literal["A21"], ...] = ("A21",)
     model_calls: Literal[0] = 0
+    workflow: WorkflowRun | None = None
 
     @model_validator(mode="after")
     def links(self) -> "Case":
+        if self.workflow is not None and self.workflow.source_checksum != self.source_checksum:
+            raise ValueError("Workflow source mismatch")
         refs = {e.evidence_id for e in self.evidence}
         if self.input_source_uris and any(
             e.source_uri not in self.input_source_uris for e in self.evidence

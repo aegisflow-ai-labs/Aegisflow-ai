@@ -199,6 +199,157 @@
       ],
       "title": "Task",
       "type": "object"
+    },
+    "WorkflowLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "max_steps": {
+          "default": 3,
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Max Steps",
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "default": 1,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        },
+        "max_source_bytes": {
+          "default": 1000000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Source Bytes",
+          "type": "integer"
+        },
+        "deadline_ms": {
+          "default": 5000,
+          "maximum": 60000,
+          "minimum": 1,
+          "title": "Deadline Ms",
+          "type": "integer"
+        },
+        "allowed_tools": {
+          "default": [
+            "read_synthetic_snapshot"
+          ],
+          "items": {
+            "const": "read_synthetic_snapshot",
+            "type": "string"
+          },
+          "title": "Allowed Tools",
+          "type": "array"
+        }
+      },
+      "title": "WorkflowLimits",
+      "type": "object"
+    },
+    "WorkflowRun": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "const": "bounded-supply-v1",
+          "default": "bounded-supply-v1",
+          "title": "Version",
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/WorkflowLimits"
+        },
+        "source_checksum": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Checksum",
+          "type": "string"
+        },
+        "source_bytes": {
+          "minimum": 1,
+          "title": "Source Bytes",
+          "type": "integer"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/WorkflowStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "disposition": {
+          "enum": [
+            "ESCALATE",
+            "MONITOR",
+            "COLLECT_EVIDENCE"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "model_calls": {
+          "const": 0,
+          "default": 0,
+          "title": "Model Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "limits",
+        "source_checksum",
+        "source_bytes",
+        "steps",
+        "disposition"
+      ],
+      "title": "WorkflowRun",
+      "type": "object"
+    },
+    "WorkflowStep": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "name": {
+          "enum": [
+            "SOURCE_CHECK",
+            "SLA_ANALYSIS",
+            "TRIAGE"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "const": "COMPLETED",
+          "default": "COMPLETED",
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_calls": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WorkflowStep",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -313,6 +464,17 @@
       "default": 0,
       "title": "Model Calls",
       "type": "integer"
+    },
+    "workflow": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkflowRun"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [
