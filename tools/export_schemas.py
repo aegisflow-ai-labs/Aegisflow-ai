@@ -17,6 +17,9 @@ for name in (
     "AuditEvent",
     "Action",
     "ActionPayload",
+    "WorkflowLimits",
+    "WorkflowStep",
+    "WorkflowRun",
 ):
     model = getattr(contracts, name)
     Path(f"schemas/{name}.schema.json").write_text(

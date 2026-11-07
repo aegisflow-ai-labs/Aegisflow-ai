@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "name": {
+      "enum": [
+        "SOURCE_CHECK",
+        "SLA_ANALYSIS",
+        "TRIAGE"
+      ],
+      "title": "Name",
+      "type": "string"
+    },
+    "status": {
+      "const": "COMPLETED",
+      "default": "COMPLETED",
+      "title": "Status",
+      "type": "string"
+    },
+    "tool_calls": {
+      "default": 0,
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Tool Calls",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "WorkflowStep",
+  "type": "object"
+}

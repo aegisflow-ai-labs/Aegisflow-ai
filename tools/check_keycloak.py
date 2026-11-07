@@ -63,6 +63,10 @@ def main():
         page.get_by_role("button", name="Investigate demo case").click()
         expect(page.get_by_role("heading", name="Investigation complete.")).to_be_visible()
         expect(page.locator("dl")).to_contain_text("25200")
+        expect(
+            page.get_by_role("heading", name="Investigation workflow", exact=True)
+        ).to_be_visible()
+        expect(page.locator("main")).to_contain_text("3 completed steps")
         expect(page.locator("dl")).to_contain_text("True")
         sources = page.locator("details.evidence-item")
         expect(sources).to_have_count(5)

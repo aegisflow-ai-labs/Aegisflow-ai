@@ -409,3 +409,25 @@ simulation represented by its committed audit record; no supplier, email service
 or enterprise system is contacted. A local operator may hold all demo permissions;
 production separation of duties, approval expiry, cancellation and external
 connector recovery remain future work. See [ADR-014](docs/adr/014-controlled-synthetic-actions.md).
+
+## Bounded workflow and reproducible evaluation
+
+New cases record the fixed **source check → SLA analysis → decision support**
+workflow and its resource limits. The existing tenant/source checks still apply.
+Budget failures produce no persisted case or success event. Historical cases
+remain readable without an invented execution trace.
+
+```sh
+.venv/bin/python -m aegisflow evaluate
+```
+
+The command checks 12 labeled synthetic development scenarios against expected
+outcomes and the original baseline. It exits nonzero on disagreement. The suite
+is under `fixtures/evaluations/`; the recorded report is under `docs/evaluation/`.
+CI reruns the evaluation and uploads its report. This is regression coverage, not
+a held-out benchmark or evidence of improved accuracy/latency.
+
+This is the deterministic foundation for bounded orchestration; model-based
+planning and additional specialists remain planned.
+See [ADR-016](docs/adr/016-bounded-workflow-evaluation.md) and the
+[current scope assessment](docs/progress.md).

@@ -1,0 +1,95 @@
+{
+  "suite_version": "supply-workflow-eval-v1",
+  "suite_checksum": "8092407d466e89abf677ce2465c4234cc64b54061526aa77e4696410efa32cca",
+  "workflow_version": "bounded-supply-v1",
+  "cases": 12,
+  "passed": true,
+  "model_calls": 0,
+  "results": [
+    {
+      "name": "late",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "on-time",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "missing-sla",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "conflicting-deliveries",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "pending",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "sla-boundary-3599",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "sla-boundary-3600",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "sla-boundary-3601",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "missing-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "stale-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "missing-procedure",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    },
+    {
+      "name": "offset-equivalent",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1
+    }
+  ],
+  "interpretation": "Development regression set; no held-out accuracy, latency or improvement claim."
+}

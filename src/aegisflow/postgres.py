@@ -9,8 +9,9 @@ from uuid import uuid4
 import psycopg
 
 from .contracts import AuditEvent, Case, Request, Scenario, Scope
-from .engine import digest, investigate
+from .engine import digest
 from .store import IdempotencyConflict, NotFound, Store
+from .workflow import investigate
 
 MIGRATION = """
 CREATE TABLE aegis_cases (

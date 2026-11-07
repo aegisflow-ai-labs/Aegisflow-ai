@@ -246,6 +246,16 @@ def report(case: Case, extra: str = "") -> HTMLResponse:
         + escape(decision.model_dump_json(indent=2))
         + "</pre></details><p>Recommendation only. No supplier has been contacted.</p></section>"
     )
+    trace = '<section class="card"><h2>Investigation workflow</h2>'
+    if case.workflow is None:
+        trace += "<p>This historical case has no recorded workflow trace.</p>"
+    else:
+        trace += (
+            "<p>Source check → SLA analysis → Decision support</p><p>3 completed steps · 1 source read · 0 model calls</p><details><summary>Workflow version and resource limits</summary><pre>"
+            + escape(case.workflow.model_dump_json(indent=2))
+            + "</pre></details>"
+        )
+    trace += "</section>"
     values = {claim.code: claim.value for claim in case.claims}
     details = "".join(
         f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>"
@@ -261,6 +271,7 @@ def report(case: Case, extra: str = "") -> HTMLResponse:
         '<section class="hero" id="investigation"><h1>Investigation complete.</h1><p class="lead">Evidence-backed supplier investigation</p></section>'
         + recommendation
         + case_workbench(case)
+        + trace
         + '<section class="card"><h2>Findings</h2><dl>'
         + details
         + "</dl><details><summary>View source-linked report</summary><pre>"

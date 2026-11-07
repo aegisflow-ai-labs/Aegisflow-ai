@@ -9,8 +9,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .contracts import Request, Scenario, Scope
+from .evaluation import evaluate
 from .scenario import generate
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
+from .workflow import WorkflowBudgetExceeded
 
 
 def main() -> int:
@@ -23,8 +25,16 @@ def main() -> int:
     run.add_argument("--db", type=Path, required=True)
     run.add_argument("--key", required=True)
     run.add_argument("--as-of", default="2026-11-01T18:00:00Z")
+    evaluation = sub.add_parser("evaluate")
+    evaluation.add_argument(
+        "--suite", type=Path, default=Path("fixtures/evaluations/supply-workflow-v1.json")
+    )
     args = parser.parse_args()
     try:
+        if args.command == "evaluate":
+            report = evaluate(args.suite)
+            print(json.dumps(report, indent=2))
+            return 0 if report["passed"] else 1
         if args.command == "generate":
             print(generate(args.seed).model_dump_json(indent=2))
         else:
@@ -60,6 +70,8 @@ def main() -> int:
                 )
             )
         return 0
+    except WorkflowBudgetExceeded:
+        print("WORKFLOW_BUDGET_EXCEEDED", file=sys.stderr)
     except (ValidationError, ValueError):
         print("INVALID_SCHEMA: Girdi veya zaman alanları geçersiz", file=sys.stderr)
     except (PolicyDenied, NotFound, IdempotencyConflict) as error:
