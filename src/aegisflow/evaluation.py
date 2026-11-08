@@ -11,7 +11,7 @@ from .contracts import Contract, Identifier, Request, Scenario
 from .engine import investigate as baseline
 from .integrity import digest
 from .triage import triage
-from .workflow import investigate
+from .workflow import investigate, investigate_adaptive
 
 
 class EvaluationCase(Contract):
@@ -24,11 +24,14 @@ class EvaluationCase(Contract):
 
 
 class EvaluationSuite(Contract):
-    version: Literal["supply-workflow-eval-v1"]
+    version: Literal["supply-workflow-eval-v1", "supply-workflow-eval-v2"]
     cases: Annotated[tuple[EvaluationCase, ...], Field(min_length=1, max_length=500)]
 
 
-def evaluate(path: Path) -> dict[str, object]:
+def evaluate(path: Path, variant: str = "fixed-v1") -> dict[str, object]:
+    if variant not in ("fixed-v1", "validated-v2"):
+        raise ValueError("Unknown evaluation workflow")
+    runner = investigate_adaptive if variant == "validated-v2" else investigate
     with path.open("rb") as file:
         payload = file.read(1000001)
     if len(payload) > 1000000:
@@ -47,7 +50,7 @@ def evaluate(path: Path) -> dict[str, object]:
         )
         case_id = "evaluation:" + sample.name
         reference = baseline(request, sample.scenario, case_id, "evaluation", now)
-        candidate = investigate(request, sample.scenario, case_id, "evaluation", now)
+        candidate = runner(request, sample.scenario, case_id, "evaluation", now)
         claims = {claim.code: claim.value for claim in candidate.claims}
         labels_match = (
             candidate.status == sample.expected_status
@@ -68,11 +71,18 @@ def evaluate(path: Path) -> dict[str, object]:
                 "tool_calls": sum(s.tool_calls for s in trace.steps) if trace else 0,
             }
         )
+        if variant == "validated-v2":
+            rows[-1]["planner_calls"] = trace.planner_calls if trace else 0
+            rows[-1]["evidence_review_selected"] = bool(
+                trace and any(s.name == "EVIDENCE_REVIEW" for s in trace.steps)
+            )
     passed = all(r["labels_match"] and r["baseline_equivalent"] for r in rows)
     return {
         "suite_version": suite.version,
         "suite_checksum": digest(json.loads(payload)),
-        "workflow_version": "bounded-supply-v1",
+        "workflow_version": "bounded-supply-v2"
+        if variant == "validated-v2"
+        else "bounded-supply-v1",
         "cases": len(rows),
         "passed": passed,
         "model_calls": 0,

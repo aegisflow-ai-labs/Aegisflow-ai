@@ -8,3 +8,4 @@ uv sync --frozen --no-editable --reinstall-package aegisflow-ai
 
 mkdir -p work/evaluation
 .venv/bin/python -m aegisflow evaluate > work/evaluation/supply-workflow-v1.json
+.venv/bin/python -m aegisflow evaluate --suite fixtures/evaluations/supply-workflow-v2.json --workflow validated-v2 > work/evaluation/supply-workflow-v2.json

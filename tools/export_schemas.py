@@ -20,6 +20,8 @@ for name in (
     "WorkflowLimits",
     "WorkflowStep",
     "WorkflowRun",
+    "PlanningContext",
+    "FollowupPlan",
 ):
     model = getattr(contracts, name)
     Path(f"schemas/{name}.schema.json").write_text(

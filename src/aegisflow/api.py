@@ -35,6 +35,7 @@ from .http_limits import RequestLimits
 from .identity import IdentityUnavailable, JWTIdentity, Unauthenticated
 from .login_ui import COOKIE, mount_login
 from .oidc import BrowserLogin
+from .planning import PlannerUnavailable, PlanRejected
 from .postgres import PostgresStore
 from .store import IdempotencyConflict, NotFound, PolicyDenied, Store
 from .triage import Triage, triage
@@ -146,6 +147,13 @@ def create_app(
     @app.exception_handler(NotFound)
     async def missing(_: HTTPRequest, __: NotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "NOT_FOUND"})
+
+    @app.exception_handler(PlanRejected)
+    @app.exception_handler(PlannerUnavailable)
+    async def invalid_workflow_plan(
+        _: HTTPRequest, __: PlanRejected | PlannerUnavailable
+    ) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "WORKFLOW_PLAN_UNAVAILABLE"})
 
     @app.exception_handler(WorkflowBudgetExceeded)
     async def workflow_budget_exceeded(_: HTTPRequest, __: WorkflowBudgetExceeded) -> JSONResponse:

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from .contracts import AuditEvent, Case, Request, Scenario, Scope
 from .engine import digest
-from .workflow import investigate
+from .workflow import investigate_adaptive as investigate
 
 
 class PolicyDenied(Exception):

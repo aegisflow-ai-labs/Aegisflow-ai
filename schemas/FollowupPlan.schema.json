@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "const": "followup-plan-v1",
+      "default": "followup-plan-v1",
+      "title": "Version",
+      "type": "string"
+    },
+    "context_digest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "role_id": {
+      "const": "A21",
+      "default": "A21",
+      "title": "Role Id",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "enum": [
+          "EVIDENCE_REVIEW",
+          "TRIAGE"
+        ],
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "reason": {
+      "enum": [
+        "STANDARD_TRIAGE",
+        "EVIDENCE_GAP_REVIEW"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "context_digest",
+    "steps",
+    "reason"
+  ],
+  "title": "FollowupPlan",
+  "type": "object"
+}

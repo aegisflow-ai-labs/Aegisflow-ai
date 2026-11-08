@@ -29,10 +29,11 @@ def main() -> int:
     evaluation.add_argument(
         "--suite", type=Path, default=Path("fixtures/evaluations/supply-workflow-v1.json")
     )
+    evaluation.add_argument("--workflow", choices=["fixed-v1", "validated-v2"], default="fixed-v1")
     args = parser.parse_args()
     try:
         if args.command == "evaluate":
-            report = evaluate(args.suite)
+            report = evaluate(args.suite, args.workflow)
             print(json.dumps(report, indent=2))
             return 0 if report["passed"] else 1
         if args.command == "generate":

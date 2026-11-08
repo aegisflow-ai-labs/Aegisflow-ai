@@ -1,0 +1,1080 @@
+{
+  "version": "supply-workflow-eval-v2",
+  "cases": [
+    {
+      "name": "late",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "on-time",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-002",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-002",
+            "delivered_at": "2026-11-01T09:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 0,
+      "expected_breach": false,
+      "expected_disposition": "MONITOR"
+    },
+    {
+      "name": "missing-sla",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-003",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-003",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": null,
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": null,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "conflicting-deliveries",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-004",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-004",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          },
+          {
+            "schema_version": 1,
+            "event_id": "delivery-conflict",
+            "order_id": "PO-004",
+            "delivered_at": "2026-11-01T12:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": null,
+      "expected_breach": null,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "pending",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-005",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 32400,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "sla-boundary-3599",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T09:59:59Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 3599,
+      "expected_breach": false,
+      "expected_disposition": "MONITOR"
+    },
+    {
+      "name": "sla-boundary-3600",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T10:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 3600,
+      "expected_breach": false,
+      "expected_disposition": "MONITOR"
+    },
+    {
+      "name": "sla-boundary-3601",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T10:00:01Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 3601,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "missing-inventory",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": null,
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "stale-inventory",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-10-30T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "missing-procedure",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": null
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "offset-equivalent",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T12:00:00+03:00",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "missing-inventory-procedure",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": null,
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": null
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "missing-sla-inventory",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": null,
+        "sla": null,
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": null,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "missing-all-optional",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": null,
+        "sla": null,
+        "procedure": null
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": null,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "future-inventory",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T19:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "inventory-age-boundary",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-10-31T18:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "inventory-age-over-boundary",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-10-31T17:59:59Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "zero-grace-on-time",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T09:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 0,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 0,
+      "expected_breach": false,
+      "expected_disposition": "MONITOR"
+    },
+    {
+      "name": "zero-grace-late",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T09:00:01Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 0,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 1,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "week-grace",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 604800,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 25200,
+      "expected_breach": false,
+      "expected_disposition": "MONITOR"
+    },
+    {
+      "name": "duplicate-identical-event",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          },
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 25200,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    },
+    {
+      "name": "conflicting-same-event-id",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T16:00:00Z"
+          },
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-01T12:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "NEEDS_EVIDENCE",
+      "expected_delay": null,
+      "expected_breach": null,
+      "expected_disposition": "COLLECT_EVIDENCE"
+    },
+    {
+      "name": "future-delivery",
+      "scenario": {
+        "schema_version": 1,
+        "dataset_version": "supply-delay-v1",
+        "seed": 42,
+        "generator_version": "1",
+        "source_uri": "synthetic://supply-delay-v1",
+        "access_class": "synthetic",
+        "order": {
+          "schema_version": 1,
+          "order_id": "PO-001",
+          "tenant_id": "demo",
+          "quantity": 100,
+          "promised_at": "2026-11-01T09:00:00Z",
+          "placed_at": "2026-10-29T09:00:00Z"
+        },
+        "deliveries": [
+          {
+            "schema_version": 1,
+            "event_id": "delivery-001",
+            "order_id": "PO-001",
+            "delivered_at": "2026-11-02T18:00:00Z"
+          }
+        ],
+        "inventory": {
+          "schema_version": 1,
+          "available": 20,
+          "captured_at": "2026-11-01T09:00:00Z"
+        },
+        "sla": {
+          "schema_version": 1,
+          "grace_seconds": 3600,
+          "version": "sla-v1"
+        },
+        "procedure": {
+          "schema_version": 1,
+          "version": "sop-v1",
+          "instruction": "Escalate to procurement after SLA breach"
+        }
+      },
+      "expected_status": "COMPLETED",
+      "expected_delay": 32400,
+      "expected_breach": true,
+      "expected_disposition": "ESCALATE"
+    }
+  ]
+}

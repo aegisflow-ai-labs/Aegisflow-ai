@@ -1,6 +1,6 @@
 # ADR-016: Bounded investigation workflow and baseline evaluation
 
-Status: implemented for review
+Status: accepted fixed-v1 foundation; new cases use v2 as described in ADR-017.
 
 ## Decision and acceptance
 
