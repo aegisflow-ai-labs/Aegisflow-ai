@@ -412,8 +412,9 @@ connector recovery remain future work. See [ADR-014](docs/adr/014-controlled-syn
 
 ## Bounded workflow and reproducible evaluation
 
-New cases record the fixed **source check → SLA analysis → decision support**
-workflow and its resource limits. The existing tenant/source checks still apply.
+The retained fixed v1 runner records **source check → SLA analysis → decision support**
+and its resource limits. New cases use the validated v2 follow-up described below.
+The existing tenant/source checks still apply.
 Budget failures produce no persisted case or success event. Historical cases
 remain readable without an invented execution trace.
 
