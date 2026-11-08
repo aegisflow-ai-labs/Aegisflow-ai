@@ -250,8 +250,18 @@ def report(case: Case, extra: str = "") -> HTMLResponse:
     if case.workflow is None:
         trace += "<p>This historical case has no recorded workflow trace.</p>"
     else:
+        review = any(step.name == "EVIDENCE_REVIEW" for step in case.workflow.steps)
         trace += (
-            "<p>Source check → SLA analysis → Decision support</p><p>3 completed steps · 1 source read · 0 model calls</p><details><summary>Workflow version and resource limits</summary><pre>"
+            "<p>Source check → SLA analysis → "
+            + ("Evidence integrity review → " if review else "")
+            + "Decision support</p>"
+            + f"<p>{len(case.workflow.steps)} completed steps · 1 source read · 0 model calls</p>"
+            + (
+                "<p>Missing or conflicting evidence required an extra integrity check. The case still needs evidence.</p>"
+                if review
+                else ""
+            )
+            + "<details><summary>Workflow version and resource limits</summary><pre>"
             + escape(case.workflow.model_dump_json(indent=2))
             + "</pre></details>"
         )

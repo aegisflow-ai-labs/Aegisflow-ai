@@ -11,7 +11,7 @@ import psycopg
 from .contracts import AuditEvent, Case, Request, Scenario, Scope
 from .engine import digest
 from .store import IdempotencyConflict, NotFound, Store
-from .workflow import investigate
+from .workflow import investigate_adaptive as investigate
 
 MIGRATION = """
 CREATE TABLE aegis_cases (

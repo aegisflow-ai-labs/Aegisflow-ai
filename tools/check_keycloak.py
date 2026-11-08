@@ -92,6 +92,9 @@ def main():
             page.get_by_label("Purchase order").select_option(order)
             page.get_by_role("button", name="Investigate demo case").click()
             expect(page.get_by_role("heading", name=expected, exact=True)).to_be_visible()
+            if order in ("PO-003", "PO-004"):
+                expect(page.locator("main")).to_contain_text("4 completed steps")
+                expect(page.locator("main")).to_contain_text("Evidence integrity review")
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         for path, active in (
             ("/", "Command center"),

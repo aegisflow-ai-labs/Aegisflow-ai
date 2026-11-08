@@ -1,0 +1,68 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "source_checksum": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Source Checksum",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "COMPLETED",
+        "NEEDS_EVIDENCE"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "uncertainty": {
+      "items": {
+        "enum": [
+          "CONFLICTING_DELIVERY_EVENTS",
+          "MISSING_SLA",
+          "MISSING_INVENTORY",
+          "STALE_OR_FUTURE_INVENTORY",
+          "MISSING_PROCEDURE"
+        ],
+        "type": "string"
+      },
+      "title": "Uncertainty",
+      "type": "array"
+    },
+    "evidence_count": {
+      "maximum": 5,
+      "minimum": 0,
+      "title": "Evidence Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "case_id",
+    "tenant_id",
+    "source_checksum",
+    "status",
+    "uncertainty",
+    "evidence_count"
+  ],
+  "title": "PlanningContext",
+  "type": "object"
+}

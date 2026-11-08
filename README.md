@@ -431,3 +431,25 @@ This is the deterministic foundation for bounded orchestration; model-based
 planning and additional specialists remain planned.
 See [ADR-016](docs/adr/016-bounded-workflow-evaluation.md) and the
 [current scope assessment](docs/progress.md).
+
+## Validated follow-up planning
+
+New investigations use bounded-supply-v2. After source/SLA checks, a local
+rule-based proposer suggests the follow-up. Complete cases use three steps;
+incomplete/conflicting cases add an evidence integrity review for four steps.
+The review checks captured record integrity and preserves missing evidence.
+
+The server rejects unknown steps/roles, extra tool/action fields, context replay,
+skipped review and plans exceeding remaining budget. Planner failure stops case
+creation. Validated plans, selection reasons and counts appear in the recorded
+workflow details. This is a constrained orchestration foundation; no external
+model, adaptive LLM planner or additional specialist implementation is claimed.
+
+```sh
+.venv/bin/python -m aegisflow evaluate --suite fixtures/evaluations/supply-workflow-v2.json --workflow validated-v2
+```
+
+The original fixed workflow remains available through the default evaluation
+command (fixed-v1). The original 12-case report is retained; CI publishes it
+alongside the 24-case v2 report. Historical cases and repeated request keys keep
+their original traces. See [ADR-017](docs/adr/017-validated-followup-planning.md).

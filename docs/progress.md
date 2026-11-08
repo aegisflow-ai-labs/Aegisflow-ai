@@ -1,4 +1,4 @@
-# Scope progress — 2026-11-06
+# Scope progress — 2026-11-08
 
 This is a scope assessment, not a measured completion metric. Technical-design
 PDF targets are not measured results. PR contents are review-ready work until
@@ -15,8 +15,9 @@ access, PostgreSQL RLS, multi-page case/evidence/audit views and exact-content
 approval with atomic synthetic action receipts. External business execution is
 not implemented.
 
-This slice adds the bounded workflow trace and a 12-case labeled development
-regression evaluation. Passing it does not establish general accuracy, production
+The fixed workflow retains its 12-case labeled regression evaluation. This slice
+adds a validated follow-up proposal boundary, selective integrity review on
+uncertain cases and a separate 24-case development evaluation. Passing it does not establish general accuracy, production
 readiness or PDF benchmark targets.
 
 ## Overall estimate

@@ -1,0 +1,227 @@
+{
+  "suite_version": "supply-workflow-eval-v2",
+  "suite_checksum": "8dce3f3d55fad52760a806ed24ac652195093a5c5c77a6547db3f0794f454545",
+  "workflow_version": "bounded-supply-v2",
+  "cases": 24,
+  "passed": true,
+  "model_calls": 0,
+  "results": [
+    {
+      "name": "late",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "on-time",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "missing-sla",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "conflicting-deliveries",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "pending",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "sla-boundary-3599",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "sla-boundary-3600",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "sla-boundary-3601",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "missing-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "stale-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "missing-procedure",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "offset-equivalent",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "missing-inventory-procedure",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "missing-sla-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "missing-all-optional",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "future-inventory",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "inventory-age-boundary",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "inventory-age-over-boundary",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "zero-grace-on-time",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "zero-grace-late",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "week-grace",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "duplicate-identical-event",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    },
+    {
+      "name": "conflicting-same-event-id",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 4,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": true
+    },
+    {
+      "name": "future-delivery",
+      "labels_match": true,
+      "baseline_equivalent": true,
+      "steps": 3,
+      "tool_calls": 1,
+      "planner_calls": 1,
+      "evidence_review_selected": false
+    }
+  ],
+  "interpretation": "Development regression set; no held-out accuracy, latency or improvement claim."
+}

@@ -11,6 +11,7 @@
       "enum": [
         "SOURCE_CHECK",
         "SLA_ANALYSIS",
+        "EVIDENCE_REVIEW",
         "TRIAGE"
       ],
       "title": "Name",

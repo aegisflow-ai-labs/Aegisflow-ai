@@ -129,14 +129,53 @@ class WorkflowLimits(Contract):
     allowed_tools: tuple[Literal["read_synthetic_snapshot"], ...] = ("read_synthetic_snapshot",)
 
 
+class PlanningContext(Contract):
+    case_id: Identifier
+    tenant_id: Identifier
+    source_checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    status: Literal["COMPLETED", "NEEDS_EVIDENCE"]
+    uncertainty: tuple[
+        Literal[
+            "CONFLICTING_DELIVERY_EVENTS",
+            "MISSING_SLA",
+            "MISSING_INVENTORY",
+            "STALE_OR_FUTURE_INVENTORY",
+            "MISSING_PROCEDURE",
+        ],
+        ...,
+    ]
+    evidence_count: Annotated[int, Field(strict=True, ge=0, le=5)]
+
+
+class FollowupPlan(Contract):
+    version: Literal["followup-plan-v1"] = "followup-plan-v1"
+    context_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    role_id: Literal["A21"] = "A21"
+    steps: Annotated[
+        tuple[Literal["EVIDENCE_REVIEW", "TRIAGE"], ...], Field(min_length=1, max_length=2)
+    ]
+    reason: Literal["STANDARD_TRIAGE", "EVIDENCE_GAP_REVIEW"]
+
+    @model_validator(mode="after")
+    def canonical_followup(self) -> "FollowupPlan":
+        expected = (
+            ("TRIAGE",) if self.reason == "STANDARD_TRIAGE" else ("EVIDENCE_REVIEW", "TRIAGE")
+        )
+        if self.steps != expected:
+            raise ValueError("Invalid follow-up ordering")
+        return self
+
+
 class WorkflowStep(Contract):
-    name: Literal["SOURCE_CHECK", "SLA_ANALYSIS", "TRIAGE"]
+    name: Literal["SOURCE_CHECK", "SLA_ANALYSIS", "EVIDENCE_REVIEW", "TRIAGE"]
     status: Literal["COMPLETED"] = "COMPLETED"
     tool_calls: Annotated[int, Field(strict=True, ge=0, le=1)] = 0
 
 
 class WorkflowRun(Contract):
-    version: Literal["bounded-supply-v1"] = "bounded-supply-v1"
+    version: Literal["bounded-supply-v1", "bounded-supply-v2"] = "bounded-supply-v1"
+    plan: FollowupPlan | None = None
+    planner_calls: Annotated[int, Field(strict=True, ge=0, le=1)] = 0
     limits: WorkflowLimits
     source_checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
     source_bytes: Annotated[int, Field(strict=True, ge=1)]
@@ -146,7 +185,14 @@ class WorkflowRun(Contract):
 
     @model_validator(mode="after")
     def budgets(self) -> "WorkflowRun":
-        if tuple(s.name for s in self.steps) != ("SOURCE_CHECK", "SLA_ANALYSIS", "TRIAGE"):
+        expected: tuple[str, ...] = ("SOURCE_CHECK", "SLA_ANALYSIS", "TRIAGE")
+        if self.version == "bounded-supply-v2":
+            if self.plan is None or self.planner_calls != 1:
+                raise ValueError("Validated follow-up plan required")
+            expected = ("SOURCE_CHECK", "SLA_ANALYSIS", *self.plan.steps)
+        elif self.plan is not None or self.planner_calls != 0:
+            raise ValueError("Fixed workflow cannot contain adaptive plan")
+        if tuple(s.name for s in self.steps) != expected:
             raise ValueError("Unexpected workflow plan")
         if (
             len(self.steps) > self.limits.max_steps
@@ -155,7 +201,7 @@ class WorkflowRun(Contract):
         ):
             raise ValueError("Workflow budget exceeded")
         if (
-            tuple(s.tool_calls for s in self.steps) != (1, 0, 0)
+            tuple(s.tool_calls for s in self.steps) != (1,) + (0,) * (len(self.steps) - 1)
             or "read_synthetic_snapshot" not in self.limits.allowed_tools
         ):
             raise ValueError("Invalid workflow tool trace")
@@ -185,6 +231,24 @@ class Case(Contract):
     def links(self) -> "Case":
         if self.workflow is not None and self.workflow.source_checksum != self.source_checksum:
             raise ValueError("Workflow source mismatch")
+        if self.workflow and self.workflow.plan:
+            context = PlanningContext(
+                case_id=self.case_id,
+                tenant_id=self.tenant_id,
+                source_checksum=self.source_checksum,
+                status=self.status,
+                uncertainty=self.uncertainty,
+                evidence_count=len(self.evidence),
+            )
+            if self.workflow.plan.context_digest != digest(context.model_dump(mode="json")):
+                raise ValueError("Workflow plan context mismatch")
+            expected_reason = (
+                "EVIDENCE_GAP_REVIEW"
+                if self.status == "NEEDS_EVIDENCE" or self.uncertainty
+                else "STANDARD_TRIAGE"
+            )
+            if self.workflow.plan.reason != expected_reason:
+                raise ValueError("Workflow follow-up does not cover case uncertainty")
         refs = {e.evidence_id for e in self.evidence}
         if self.input_source_uris and any(
             e.source_uri not in self.input_source_uris for e in self.evidence
